@@ -3,6 +3,15 @@
 import { parseArgs } from "@std/cli/parse-args";
 import { bumpWorkspaces } from "./mod.ts";
 
+function argToBoolean(
+  arg: boolean | string | undefined,
+  defaultValue: boolean,
+): boolean {
+  if (arg === undefined) return defaultValue;
+  if (arg === "false") return false;
+  return true; // Any other value (including empty string) is truthy
+}
+
 /**
  * The CLI entrypoint of the package. You can directly perform the version bump behavior from CLI:
  *
@@ -92,12 +101,14 @@ if (import.meta.main) {
     releaseNotePath: args["release-note-path"],
     publishMode: publishMode as "workspace" | "per-package" | undefined,
     // Use CLI args if provided, otherwise use mode-appropriate defaults
-    individualPRs: args["individual-prs"] ?? false,
-    individualTags: args["individual-tags"] ?? isPerPackageMode,
-    individualReleaseNotes: args["individual-release-notes"] ??
+    individualPRs: argToBoolean(args["individual-prs"], false),
+    individualTags: argToBoolean(args["individual-tags"], isPerPackageMode),
+    individualReleaseNotes: argToBoolean(
+      args["individual-release-notes"],
       isPerPackageMode,
-    createTags: args["create-tags"] ?? true, // Default to true
-    tagPrefix: args["tag-prefix"] ?? "v", // Default to "v"
-    pushTags: args["push-tags"] ?? true, // Default to true
+    ),
+    createTags: argToBoolean(args["create-tags"], true),
+    tagPrefix: args["tag-prefix"] ?? "v",
+    pushTags: argToBoolean(args["push-tags"], true),
   });
 }
