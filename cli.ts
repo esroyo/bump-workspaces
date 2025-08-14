@@ -25,11 +25,14 @@ import { bumpWorkspaces } from "./mod.ts";
  * For per-package publishing mode:
  * 
  * ```sh
- * # Per-package mode with individual PRs and tags
- * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-prs --individual-tags
+ * # Per-package mode (individual tags and release notes by default)
+ * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package
  * 
- * # Per-package mode with individual release notes
- * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-release-notes
+ * # Per-package mode with individual PRs
+ * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-prs
+ * 
+ * # Per-package mode but opt out of individual release notes
+ * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --no-individual-release-notes
  * ```
  *
  * @module
@@ -48,12 +51,11 @@ if (import.meta.main) {
       "individual-tags", 
       "individual-release-notes"
     ],
-    alias: {
-      "publish-mode": "publish-mode",
-      "individual-prs": "individual-prs",
-      "individual-tags": "individual-tags", 
-      "individual-release-notes": "individual-release-notes"
-    }
+    negatable: [
+      "individual-prs",
+      "individual-tags", 
+      "individual-release-notes"
+    ]
   });
 
   // Validate publish mode
@@ -68,12 +70,17 @@ if (import.meta.main) {
     console.warn("Warning: individual-* options are only effective when --publish-mode is 'per-package'");
   }
 
+  // Set defaults based on publish mode
+  const isPerPackageMode = publishMode === "per-package";
+  
   await bumpWorkspaces({
     dryRun: args["dry-run"],
     importMap: args["import-map"],
     releaseNotePath: args["release-note-path"],
     publishMode: publishMode as "workspace" | "per-package" | undefined,
-    individualPRs: args["individual-prs"],
-    individualTags: args["individual-tags"],
-    individualReleaseNotes: args["individual-release-notes"],
+    // Use CLI args if provided, otherwise use mode-appropriate defaults
+    individualPRs: args["individual-prs"] ?? false,
+    individualTags: args["individual-tags"] ?? isPerPackageMode,
+    individualReleaseNotes: args["individual-release-notes"] ?? isPerPackageMode,
   });
+}

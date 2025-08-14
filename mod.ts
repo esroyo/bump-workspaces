@@ -110,8 +110,8 @@ export async function bumpWorkspaces(
     root = ".",
     publishMode = "workspace",
     individualPRs = false,
-    individualTags = true,
-    individualReleaseNotes = false,
+    individualTags = publishMode === "per-package" ? true : false, // Dynamic default
+    individualReleaseNotes = publishMode === "per-package" ? true : false, // Dynamic default
     _quiet = false,
   }: BumpWorkspaceOptions = {},
 ) {
