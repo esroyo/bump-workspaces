@@ -2,8 +2,8 @@
 
 > A tool for upgrading Deno workspace packages using conventional commits
 
-[![ci](https://github.com/esroyo/deno-bump-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/esroyo/deno-bump-workspaces/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/esroyo/deno-bump-workspaces/graph/badge.svg?token=9Y9L5BV24U)](https://codecov.io/gh/esroyo/deno-bump-workspaces)
+[![ci](https://github.com/esroyo/bump-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/esroyo/bump-workspaces/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/esroyo/bump-workspaces/graph/badge.svg?token=9Y9L5BV24U)](https://codecov.io/gh/esroyo/bump-workspaces)
 
 This tool detects necessary version upgrades for workspaces packages using
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and
