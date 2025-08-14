@@ -585,7 +585,7 @@ ${table}
 
 Please ensure:
 - [ ] Versions in deno.json files are updated correctly
-- [ ] Releases.md is updated correctly
+- [ ] Release notes are updated correctly
 
 ${unknownCommitsNotes}
 
