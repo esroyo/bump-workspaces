@@ -1,5 +1,11 @@
 ### 2025.08.14
 
+#### @esroyo/deno-bump-workspaces 0.2.2 (patch)
+
+- feat: add tagging to the bump/release process
+
+### 2025.08.14
+
 #### @esroyo/deno-bump-workspaces 0.2.1 (patch)
 
 - fix: bumping version on single-packages
