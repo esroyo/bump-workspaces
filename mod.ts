@@ -36,14 +36,17 @@ import {
   createSinglePRWithPackageBreakdown,
   defaultParseCommitMessage,
   type Diagnostic,
+  getCurrentGitBranch,
   getModule,
   getPackageDir,
   getWorkspaceModules,
+  getWorkspaceModulesWithOptions,
   summarizeVersionBumpsByModule,
   type VersionBump,
   type VersionUpdateResult,
   withGitContext,
   type WorkspaceModule,
+  pathProp,
 } from "./util.ts";
 
 // A random separator that is unlikely to be in a commit message.
@@ -85,6 +88,8 @@ export type BumpWorkspaceOptions = {
   individualTags?: boolean;
   /** When using per-package mode, whether to create individual release notes for each package */
   individualReleaseNotes?: boolean;
+  /** Internal option: suppress additional logging (used for testing) */
+  _quiet?: boolean;
 };
 
 /**
@@ -107,13 +112,14 @@ export async function bumpWorkspaces(
     individualPRs = false,
     individualTags = true,
     individualReleaseNotes = false,
+    _quiet = false,
   }: BumpWorkspaceOptions = {},
 ) {
   return withGitContext(async () => {
     const now = new Date();
     start ??= await $`git describe --tags --abbrev=0`.text();
-    base ??= await $`git branch --show-current`.text();
-    if (!base) {
+    base ??= await getCurrentGitBranch();
+    if (!base || base === "unknown") {
       console.error("The current branch is not found.");
       Deno.exit(1);
     }
@@ -123,12 +129,32 @@ export async function bumpWorkspaces(
       releaseNotePath = publishMode === "per-package" ? "CHANGELOG.md" : "Releases.md";
     }
 
+    // Use quiet mode for getWorkspaceModules calls to avoid logging interference
+    const getModules = _quiet ?
+      (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true }) :
+      getWorkspaceModules;
+
     await $`git checkout ${start}`;
-    const [_oldConfigPath, oldModules] = await getWorkspaceModules(root);
+    const [_oldConfigPath, oldModules] = await getModules(root);
     await $`git checkout -`;
     await $`git checkout ${base}`;
-    const [configPath, modules] = await getWorkspaceModules(root);
+    const [configPath, modules] = await getModules(root);
     await $`git checkout -`;
+
+    // Determine if this is a single-package repo
+    const isSinglePackage = modules.length === 1 && modules[0][pathProp] === configPath;
+
+    // Only log package type info when not in quiet mode
+    if (!_quiet) {
+      if (isSinglePackage) {
+        console.log(`Processing single package: ${cyan(modules[0].name)}`);
+        if (publishMode === "per-package") {
+          console.log("Note: Per-package mode has limited effect on single-package repos");
+        }
+      } else {
+        console.log(`Processing workspace with ${cyan(modules.length.toString())} packages`);
+      }
+    }
 
     const newBranchName = createReleaseBranchName(now);
     const workspaceReleaseNotePath = join(root, releaseNotePath);
@@ -220,8 +246,8 @@ export async function bumpWorkspaces(
       console.log(`  ${unknownCommit.type} ${unknownCommit.commit.subject}`);
     }
 
-    // Choose publishing strategy based on publishMode
-    if (publishMode === "per-package") {
+    // Choose publishing strategy based on publishMode and repository type
+    if (publishMode === "per-package" && !isSinglePackage) {
       await publishPerPackage({
         updates: Object.values(updates),
         modules,
@@ -242,6 +268,11 @@ export async function bumpWorkspaces(
         individualReleaseNotes,
       });
     } else {
+      // Use workspace mode for single-package repos or when explicitly requested
+      if (isSinglePackage && publishMode === "per-package" && !_quiet) {
+        console.log("Using workspace-style publishing for single package");
+      }
+
       await publishWorkspace({
         updates: Object.values(updates),
         modules,
@@ -261,7 +292,7 @@ export async function bumpWorkspaces(
     }
 
     console.log("Done.");
-  });
+  }, { quiet: _quiet });
 }
 
 async function publishWorkspace({

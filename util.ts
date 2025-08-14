@@ -112,6 +112,12 @@ export interface GitContextOptions {
   workingDirectory?: string;
 }
 
+// Options interface for controlling behavior
+interface GetWorkspaceModulesOptions {
+  throwOnError?: boolean;
+  quiet?: boolean;
+}
+
 const RE_DEFAULT_PATTERN = /^([^:()]+)(?:\((.+)\))?(\!)?: (.*)$/;
 const REGEXP_UNSTABLE_SCOPE = /^(unstable\/(.+)|(.+)\/unstable)$/;
 
@@ -141,6 +147,14 @@ export const DEFAULT_RANGE_REQUIRED = [
   "perf",
   "deprecation",
 ];
+
+// Custom error class for configuration issues
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigurationError";
+  }
+}
 
 export function defaultParseCommitMessage(
   commit: Commit,
@@ -278,21 +292,57 @@ export async function tryGetDenoConfig(
   }
 }
 
-export async function getWorkspaceModules(
+export async function getWorkspaceModulesWithOptions(
   root: string,
+  options: GetWorkspaceModulesOptions = {}
 ): Promise<[string, WorkspaceModule[]]> {
+  const { throwOnError = false, quiet = false } = options;
+
   const [path, denoConfig] = await tryGetDenoConfig(root);
   const workspaces = denoConfig.workspaces || denoConfig.workspace;
 
+  // Handle single-package repos (non-workspace)
+  if (!workspaces) {
+    if (denoConfig.name && denoConfig.version) {
+      // Treat root as a single package
+      return [path, [{ ...denoConfig, [pathProp]: path }]];
+    } else {
+      const errorMessage = red("Error") +
+        " deno.json must have either:\n" +
+        "  - 'workspace' field for multi-package repos, or\n" +
+        "  - 'name' and 'version' fields for single-package repos";
+
+      if (throwOnError) {
+        throw new ConfigurationError(errorMessage);
+      }
+
+      console.log(errorMessage);
+      Deno.exit(1);
+    }
+  }
+
+  // Existing workspace logic
   if (!Array.isArray(workspaces)) {
-    console.log(red("Error") + " deno.json doesn't have workspace field.");
+    const errorMessage = red("Error") + " deno.json workspace field should be an array of strings.";
+
+    if (throwOnError) {
+      throw new ConfigurationError(errorMessage);
+    }
+
+    console.log(errorMessage);
     Deno.exit(1);
   }
 
   const result = [];
   for (const workspace of workspaces) {
     if (typeof workspace !== "string") {
-      console.log("deno.json workspace field should be an array of strings.");
+      const errorMessage = "deno.json workspace field should be an array of strings.";
+
+      if (throwOnError) {
+        throw new ConfigurationError(errorMessage);
+      }
+
+      console.log(errorMessage);
       Deno.exit(1);
     }
     const [path, workspaceConfig] = await tryGetDenoConfig(
@@ -304,6 +354,20 @@ export async function getWorkspaceModules(
     result.push({ ...workspaceConfig, [pathProp]: path });
   }
   return [path, result];
+}
+
+// Public function - maintains original behavior for CLI usage
+export async function getWorkspaceModules(
+  root: string,
+): Promise<[string, WorkspaceModule[]]> {
+  return getWorkspaceModulesWithOptions(root, { throwOnError: false, quiet: false });
+}
+
+// Test-friendly function - throws errors instead of exiting
+export async function getWorkspaceModulesForTesting(
+  root: string,
+): Promise<[string, WorkspaceModule[]]> {
+  return getWorkspaceModulesWithOptions(root, { throwOnError: true, quiet: true });
 }
 
 export function getModule(module: string, modules: WorkspaceModule[]) {
@@ -834,13 +898,19 @@ export function createPackageReleaseBranchName(packageName: string, version: str
 
 export function getPackageDir(module: WorkspaceModule, root: string): string {
   // Extract directory path from the module's deno.json path
-  // module[pathProp] could be either relative like "foo/deno.json" or absolute like "/tmp/xyz/bar/deno.json"
   const configPath = module[pathProp];
+
+  // For single-package repos, the config path is the root deno.json
   const packageDir = configPath.replace(/\/deno\.jsonc?$/, '');
 
   // If packageDir is already absolute, return it as-is
   if (isAbsolute(packageDir)) {
     return packageDir;
+  }
+
+  // For single-package repos where configPath might just be "deno.json"
+  if (packageDir === configPath) {
+    return root;
   }
 
   // Otherwise it's relative, so join with root
@@ -853,19 +923,16 @@ export function getPackageDir(module: WorkspaceModule, root: string): string {
 async function captureGitState(options: GitContextOptions = {}): Promise<GitState | null> {
   try {
     const cwd = options.workingDirectory || Deno.cwd();
-    const gitCmd = options.workingDirectory
-      ? (cmd: string) => $`git -C ${options.workingDirectory!} ${cmd}`
-      : (cmd: string) => $`git ${cmd}`;
 
-    // Get current branch
-    const branch = await gitCmd("branch --show-current").text();
+    // Get current branch using compatible method
+    const branch = await getCurrentGitBranch();
 
     // Check for uncommitted changes
-    const status = await gitCmd("status --porcelain").text();
+    const status = await $`git status --porcelain`.text();
     const hasUncommittedChanges = status.trim().length > 0;
 
     if (!options.quiet) {
-      console.log(`🔄 Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`);
+      console.log(`Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`);
     }
 
     return {
@@ -875,7 +942,7 @@ async function captureGitState(options: GitContextOptions = {}): Promise<GitStat
     };
   } catch (error) {
     if (!options.quiet) {
-      console.warn("⚠️ Failed to capture git state:", error);
+      console.warn("Failed to capture git state:", error);
     }
     return null;
   }
@@ -897,23 +964,23 @@ async function restoreGitState(
 
     if (currentBranch.trim() !== state.branch) {
       if (!options.quiet) {
-        console.log(`🧹 Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`);
+        console.log(`Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`);
       }
       await gitCmd(`checkout ${state.branch}`).quiet();
     } else {
       if (!options.quiet) {
-        console.log(`✅ Already on target branch: ${state.branch}`);
+        console.log(`Already on target branch: ${state.branch}`);
       }
     }
 
     if (!options.quiet) {
-      console.log(`✅ Git state restored successfully`);
+      console.log(`Git state restored successfully`);
     }
     return true;
   } catch (error) {
     if (!options.quiet) {
-      console.warn(`⚠️ Failed to restore git state to branch "${state.branch}":`, error);
-      console.warn(`🔧 You may need to manually run: git checkout ${state.branch}`);
+      console.warn(`Failed to restore git state to branch "${state.branch}":`, error);
+      console.warn(`You may need to manually run: git checkout ${state.branch}`);
     }
     return false;
   }
@@ -959,7 +1026,7 @@ export async function withGitContext<T>(
 
   if (!initialState) {
     if (!options.quiet) {
-      console.warn("⚠️ Could not capture git state - proceeding without restoration");
+      console.warn("Could not capture git state - proceeding without restoration");
     }
     // Still execute callback, but without restoration
     return await callback();
@@ -985,4 +1052,41 @@ export async function withGitContextForTesting<T>(
   return withGitContext(callback, {
     quiet: true,  // Don't spam test output
   });
+}
+
+/**
+ * Get current git branch, compatible with older git versions and detached HEAD
+ */
+export async function getCurrentGitBranch(): Promise<string> {
+  try {
+    // Try modern approach first (Git 2.22+)
+    const result = await $`git branch --show-current`.text();
+    if (result.trim()) {
+      return result.trim();
+    }
+  } catch {
+    // Fallback - ignore the error and try alternatives
+  }
+
+  try {
+    // Fallback for older Git versions or detached HEAD
+    const output = await $`git rev-parse --abbrev-ref HEAD`.text();
+    const branch = output.trim();
+    // If we get "HEAD", we're in detached state, try to get a meaningful name
+    if (branch === "HEAD") {
+      try {
+        // Try to get a tag or describe
+        const described = await $`git describe --exact-match HEAD`.text();
+        return described.trim();
+      } catch {
+        // Return the short SHA if nothing else works
+        const sha = await $`git rev-parse --short HEAD`.text();
+        return `detached-${sha.trim()}`;
+      }
+    }
+    return branch;
+  } catch {
+    // Final fallback
+    return "unknown";
+  }
 }

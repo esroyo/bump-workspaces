@@ -135,6 +135,7 @@ Deno.test("bumpWorkspaces() per-package mode with dry run", async (t) => {
         individualPRs: true,
         individualTags: true,
         individualReleaseNotes: true,
+        _quiet: true, // suppress extra logging
       });
 
       // Check that per-package mode was activated

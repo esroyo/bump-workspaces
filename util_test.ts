@@ -1,11 +1,13 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertExists, assertObjectMatch } from "@std/assert";
+import { assert, assertEquals, assertExists, assertObjectMatch } from "@std/assert";
 import { assertSnapshot } from "@std/testing/snapshot";
 import denoJson from "./deno.json" with { type: "json" };
+import { join } from "@std/path";
 import {
   applyVersionBump,
   checkModuleName,
+  ConfigurationError,
   createPackageReleaseBranchName,
   createPackageReleaseNote,
   createPackagePrBody,
@@ -16,8 +18,10 @@ import {
   createReleaseTitle,
   defaultParseCommitMessage,
   type Diagnostic,
+  getPackageDir,
   getModule,
   getWorkspaceModules,
+  getWorkspaceModulesForTesting,
   maxVersion,
   pathProp,
   summarizeVersionBumpsByModule,
@@ -1166,4 +1170,82 @@ Deno.test("createPerPackagePrBody() format", async (t) => {
 
   const prBody = createPerPackagePrBody(mockUpdates, diagnostics, "owner/repo", "release-branch");
   await assertSnapshot(t, prBody);
+});
+
+Deno.test("getWorkspaceModules() handles single-package repos", async () => {
+  // Create a temporary directory with a single-package deno.json
+  const dir = await Deno.makeTempDir();
+  const singlePackageConfig = {
+    name: "@test/single-package",
+    version: "1.0.0",
+    exports: "./mod.ts"
+  };
+
+  await Deno.writeTextFile(
+    join(dir, "deno.json"),
+    JSON.stringify(singlePackageConfig, null, 2)
+  );
+
+  try {
+    const [configPath, modules] = await getWorkspaceModulesForTesting(dir);
+
+    assertEquals(modules.length, 1);
+    assertEquals(modules[0].name, "@test/single-package");
+    assertEquals(modules[0].version, "1.0.0");
+    assertEquals(modules[0][pathProp], configPath);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("getWorkspaceModules() fails gracefully for invalid single-package repos", async () => {
+  const dir = await Deno.makeTempDir();
+
+  // Create deno.json without name/version
+  const invalidConfig = {
+    exports: "./mod.ts"
+  };
+
+  await Deno.writeTextFile(
+    join(dir, "deno.json"),
+    JSON.stringify(invalidConfig, null, 2)
+  );
+
+  try {
+    let errorThrown = false;
+    try {
+      await getWorkspaceModulesForTesting(dir);
+    } catch (error) {
+      errorThrown = true;
+      assert(error instanceof ConfigurationError);
+      assert(error.message.includes("deno.json must have either"));
+    }
+    assert(errorThrown, "Expected ConfigurationError to be thrown");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("getPackageDir() works correctly for single-package repos", async () => {
+  const root = "/tmp/test-project";
+  const module: WorkspaceModule = {
+    name: "@test/single",
+    version: "1.0.0",
+    [pathProp]: "/tmp/test-project/deno.json"
+  };
+
+  const packageDir = getPackageDir(module, root);
+  assertEquals(packageDir, "/tmp/test-project");
+});
+
+Deno.test("getPackageDir() works correctly for relative single-package paths", async () => {
+  const root = "./test-project";
+  const module: WorkspaceModule = {
+    name: "@test/single",
+    version: "1.0.0",
+    [pathProp]: "deno.json"  // Just the filename, indicating root
+  };
+
+  const packageDir = getPackageDir(module, root);
+  assertEquals(packageDir, "./test-project");
 });
