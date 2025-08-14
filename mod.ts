@@ -41,12 +41,12 @@ import {
   getPackageDir,
   getWorkspaceModules,
   getWorkspaceModulesWithOptions,
+  pathProp,
   summarizeVersionBumpsByModule,
   type VersionBump,
   type VersionUpdateResult,
   withGitContext,
   type WorkspaceModule,
-  pathProp,
 } from "./util.ts";
 
 // A random separator that is unlikely to be in a commit message.
@@ -114,7 +114,7 @@ export async function bumpWorkspaces(
     individualReleaseNotes = publishMode === "per-package" ? true : false, // Dynamic default
     _quiet = false,
   }: BumpWorkspaceOptions = {},
-) {
+): Promise<void> {
   return withGitContext(async () => {
     const now = new Date();
     start ??= await $`git describe --tags --abbrev=0`.text();
@@ -126,13 +126,15 @@ export async function bumpWorkspaces(
 
     // Set default release note path based on publish mode
     if (!releaseNotePath) {
-      releaseNotePath = publishMode === "per-package" ? "CHANGELOG.md" : "Releases.md";
+      releaseNotePath = publishMode === "per-package"
+        ? "CHANGELOG.md"
+        : "Releases.md";
     }
 
     // Use quiet mode for getWorkspaceModules calls to avoid logging interference
-    const getModules = _quiet ?
-      (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true }) :
-      getWorkspaceModules;
+    const getModules = _quiet
+      ? (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true })
+      : getWorkspaceModules;
 
     await $`git checkout ${start}`;
     const [_oldConfigPath, oldModules] = await getModules(root);
@@ -142,17 +144,24 @@ export async function bumpWorkspaces(
     await $`git checkout -`;
 
     // Determine if this is a single-package repo
-    const isSinglePackage = modules.length === 1 && modules[0][pathProp] === configPath;
+    const isSinglePackage = modules.length === 1 &&
+      modules[0][pathProp] === configPath;
 
     // Only log package type info when not in quiet mode
     if (!_quiet) {
       if (isSinglePackage) {
         console.log(`Processing single package: ${cyan(modules[0].name)}`);
         if (publishMode === "per-package") {
-          console.log("Note: Per-package mode has limited effect on single-package repos");
+          console.log(
+            "Note: Per-package mode has limited effect on single-package repos",
+          );
         }
       } else {
-        console.log(`Processing workspace with ${cyan(modules.length.toString())} packages`);
+        console.log(
+          `Processing workspace with ${
+            cyan(modules.length.toString())
+          } packages`,
+        );
       }
     }
 
@@ -384,14 +393,14 @@ async function publishWorkspace({
       console.log(`Creating a pull request.`);
       const octoKit = new Octokit({ auth: githubToken });
       const [owner, repo] = githubRepo.split("/");
-        const openedPr = await octoKit.request(
-          "POST /repos/{owner}/{repo}/pulls",
-          {
-            owner,
-            repo,
-            base: base,
-            head: newBranchName,
-            draft: true,
+      const openedPr = await octoKit.request(
+        "POST /repos/{owner}/{repo}/pulls",
+        {
+          owner,
+          repo,
+          base: base,
+          head: newBranchName,
+          draft: true,
           title: `chore: release ${createReleaseTitle(now)}`,
           body: createPrBody(
             updates,
@@ -399,9 +408,9 @@ async function publishWorkspace({
             githubRepo,
             newBranchName,
           ),
-          },
-        );
-        console.log("New pull request:", cyan(openedPr.data.html_url));
+        },
+      );
+      console.log("New pull request:", cyan(openedPr.data.html_url));
     }
   }
 }
@@ -483,7 +492,8 @@ async function publishPerPackage({
       const packageReleaseNote = createPackageReleaseNote(update, now);
 
       await ensureFile(packageReleaseNotePath);
-      const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+      const existingContent = await Deno.readTextFile(packageReleaseNotePath)
+        .catch(() => "");
       await Deno.writeTextFile(
         packageReleaseNotePath,
         packageReleaseNote + "\n" + existingContent,
@@ -498,7 +508,9 @@ async function publishPerPackage({
     githubRepo ??= Deno.env.get("GITHUB_REPOSITORY");
 
     if (!gitUserName || !gitUserEmail || !githubToken || !githubRepo) {
-      console.error("Required environment variables not set for per-package publishing");
+      console.error(
+        "Required environment variables not set for per-package publishing",
+      );
       Deno.exit(1);
     }
   }

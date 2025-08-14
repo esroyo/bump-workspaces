@@ -1,15 +1,14 @@
 {
   "lock": false,
-  "name": "@deno/bump-workspaces",
+  "name": "@esroyo/deno-bump-workspaces",
   "exports": {
     ".": "./mod.ts",
     "./cli": "./cli.ts"
   },
   "version": "0.1.22",
   "tasks": {
-    "test": "deno test -A",
-    "cov": "rm -rf coverage && deno test -A --coverage && deno coverage --html && deno coverage --lcov --output=coverage/lcov.info",
-    "cov-open": "deno task cov && open coverage/html/index.html"
+    "test": "deno test -A --parallel",
+    "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov"
   },
   "imports": {
     "@david/dax": "jsr:@david/dax@^0.40.1",
@@ -21,5 +20,10 @@
     "@std/path": "jsr:@std/path@^0.224.0",
     "@std/semver": "jsr:@std/semver@^0.224.0",
     "@std/testing": "jsr:@std/testing@^0.224.0"
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["require-await"]
+    }
   }
 }

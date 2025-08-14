@@ -1,37 +1,46 @@
-# @deno/bump-workspaces
+# @esroyo/deno-bump-workspaces
 
 > A tool for upgrading Deno workspace packages using conventional commits
 
-[![ci](https://github.com/denoland/bump-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/denoland/bump-workspaces/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/denoland/bump-workspaces/graph/badge.svg?token=KUT5Q1PJE6)](https://codecov.io/gh/denoland/bump-workspaces)
+[![ci](https://github.com/esroyo/deno-bump-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/esroyo/deno-bump-workspaces/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/esroyo/deno-bump-workspaces/graph/badge.svg?token=9Y9L5BV24U)](https://codecov.io/gh/esroyo/deno-bump-workspaces)
 
 This tool detects necessary version upgrades for workspaces packages using
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and
-creates a PR.
+creates a PR. Compatible with the original
+[@deno/bump-workspaces](https://github.com/denoland/bump-workspaces).
 
 # Try it
 
-Run this command with `--dry-run` flag in your Deno project and see what this command does:
+Run this command with `--dry-run` flag in your Deno project and see what this
+command does:
 
 ```sh
-deno run -A jsr:@deno/bump-workspaces@0.1.22/cli --dry-run
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --dry-run
 ```
 
 This works with both:
+
 - **Workspace repositories**: Projects with a `workspace` field in `deno.json`
-- **Single-package repositories**: Projects with `name` and `version` fields in `deno.json`
+- **Single-package repositories**: Projects with `name` and `version` fields in
+  `deno.json`
 
 # How it works
 
 The tool works with both workspace and single-package repositories:
 
 **For workspace repositories:**
-- Read `deno.json` and its "workspace" field. Read `deno.json` of each workspace package.
+
+- Read `deno.json` and its "workspace" field. Read `deno.json` of each workspace
+  package.
 
 **For single-package repositories:**
-- Read `deno.json` with "name" and "version" fields (no "workspace" field needed).
+
+- Read `deno.json` with "name" and "version" fields (no "workspace" field
+  needed).
 
 **Common workflow:**
+
 - Collect the git commit messages between the latest tag and the current branch.
 - Calculate the necessary updates for each package. (See the below table for
   what version upgrades are performed for each conventional commit tag.)
@@ -76,7 +85,7 @@ jobs:
       - name: Run workspaces version bump
         run: |
           git fetch --unshallow origin
-          deno run -A jsr:@deno/bump-workspaces@0.1.22/cli
+          deno run -A jsr:@esroyo/deno-bump-workspaces/cli
         env:
           GITHUB_TOKEN: ${{ secrets.BOT_TOKEN }}
 ```
@@ -128,10 +137,13 @@ The tool automatically detects following commit tags:
 - chore
 
 You can also mark any commit as breaking by adding `!` after the scope:
+
 - `feat(scope)!: breaking feature` → major version bump
 - `fix(scope)!: breaking fix` → major version bump
 
-If a module has `BREAKING` commits or commits with `!`, then `major` version will be updated. If a module has `feat` commits, `minor` version will be updated. Otherwise `patch` version will be updated.
+If a module has `BREAKING` commits or commits with `!`, then `major` version
+will be updated. If a module has `feat` commits, `minor` version will be
+updated. Otherwise `patch` version will be updated.
 
 | tag         | version |
 | ----------- | ------- |
@@ -184,13 +196,15 @@ what commit type is used.
 
 # Publishing Modes
 
-The tool supports two publishing modes and works with both workspace and single-package repositories:
+The tool supports two publishing modes and works with both workspace and
+single-package repositories:
 
 ## Workspace Mode (Default)
+
 Creates a single release with all package updates:
 
 ```sh
-deno run -A jsr:@deno/bump-workspaces/cli
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli
 ```
 
 - Single release note file (`Releases.md`)
@@ -198,31 +212,37 @@ deno run -A jsr:@deno/bump-workspaces/cli
 - Consolidated view of all updates
 
 ## Per-Package Mode
+
 Creates individual releases for each package:
 
 ```sh
 # Basic per-package mode (creates individual tags and release notes by default)
-deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --publish-mode per-package
 
 # With individual PRs as well
-deno run -A jsr:@deno/bump-workspaces/cli \
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
   --publish-mode per-package \
   --individual-prs
 
 # Opt out of defaults using --no-* flags
-deno run -A jsr:@deno/bump-workspaces/cli \
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
   --publish-mode per-package \
   --no-individual-release-notes
 ```
 
-**Note**: For single-package repositories, per-package mode behaves similarly to workspace mode since there's only one package to release.
+**Note**: For single-package repositories, per-package mode behaves similarly to
+workspace mode since there's only one package to release.
 
 ### Options
-- `--individual-prs`: Create separate PRs for each package (default: `false`)
-- `--individual-tags`: Create git tags like `@scope/package@1.2.0` (default: `true` in per-package mode)
-- `--individual-release-notes`: Create `CHANGELOG.md` in each package directory (default: `true` in per-package mode)
 
-All boolean options support `--no-*` flags to override defaults (e.g., `--no-individual-tags`).
+- `--individual-prs`: Create separate PRs for each package (default: `false`)
+- `--individual-tags`: Create git tags like `@scope/package@1.2.0` (default:
+  `true` in per-package mode)
+- `--individual-release-notes`: Create `CHANGELOG.md` in each package directory
+  (default: `true` in per-package mode)
+
+All boolean options support `--no-*` flags to override defaults (e.g.,
+`--no-individual-tags`).
 
 # License
 

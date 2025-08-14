@@ -139,24 +139,36 @@ Deno.test("bumpWorkspaces() per-package mode with dry run", async (t) => {
       });
 
       // Check that per-package mode was activated
-      const perPackageLog = logs.find(log => log.includes("Publishing per-package mode"));
-      assertEquals(perPackageLog?.includes("Publishing per-package mode"), true);
+      const perPackageLog = logs.find((log) =>
+        log.includes("Publishing per-package mode")
+      );
+      assertEquals(
+        perPackageLog?.includes("Publishing per-package mode"),
+        true,
+      );
 
       // Check that package-specific information is shown
-      const packageLogs = logs.filter(log => log.includes("Package: @scope/"));
+      const packageLogs = logs.filter((log) =>
+        log.includes("Package: @scope/")
+      );
       assertEquals(packageLogs.length > 0, true);
 
       // Verify dry run mentions what would be done
-      const tagLogs = logs.filter(log => log.includes("Would create tag:"));
+      const tagLogs = logs.filter((log) => log.includes("Would create tag:"));
       assertEquals(tagLogs.length > 0, true);
 
-      const prLogs = logs.filter(log => log.includes("Would create individual PR"));
+      const prLogs = logs.filter((log) =>
+        log.includes("Would create individual PR")
+      );
       assertEquals(prLogs.length > 0, true);
 
       // Normalize paths in logs for snapshot consistency
-      const normalizedLogs = logs.map(log => {
+      const normalizedLogs = logs.map((log) => {
         // Replace the actual temp directory path with a placeholder
-        return log.replace(new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '/tmp/test-dir');
+        return log.replace(
+          new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+          "/tmp/test-dir",
+        );
       });
       await assertSnapshot(t, normalizedLogs);
     } finally {
@@ -202,8 +214,16 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
     const workspaceChangelogPath = join(dir, "CHANGELOG.md");
     const workspaceContent = await Deno.readTextFile(workspaceChangelogPath);
 
-    assertEquals(releaseNoteCount > 0, true, "Should have created package-level changelogs");
-    assertEquals(workspaceContent.length > 0, true, "Should have created workspace-level changelog");
+    assertEquals(
+      releaseNoteCount > 0,
+      true,
+      "Should have created package-level changelogs",
+    );
+    assertEquals(
+      workspaceContent.length > 0,
+      true,
+      "Should have created workspace-level changelog",
+    );
 
     // Verify content of one package changelog if it exists
     for (const packageDir of packageDirs) {
@@ -211,7 +231,10 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
       try {
         const content = await Deno.readTextFile(changelogPath);
         if (content.length > 0) {
-          const normalizedContent = content.replace(/\d{4}\.\d{2}\.\d{2}/g, "YYYY.MM.DD");
+          const normalizedContent = content.replace(
+            /\d{4}\.\d{2}\.\d{2}/g,
+            "YYYY.MM.DD",
+          );
           await assertSnapshot(t, { packageDir, content: normalizedContent });
           break; // Only snapshot one for the test
         }

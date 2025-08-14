@@ -1,6 +1,11 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertExists, assertObjectMatch } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertObjectMatch,
+} from "@std/assert";
 import { assertSnapshot } from "@std/testing/snapshot";
 import denoJson from "./deno.json" with { type: "json" };
 import { join } from "@std/path";
@@ -8,9 +13,9 @@ import {
   applyVersionBump,
   checkModuleName,
   ConfigurationError,
+  createPackagePrBody,
   createPackageReleaseBranchName,
   createPackageReleaseNote,
-  createPackagePrBody,
   createPerPackagePrBody,
   createPrBody,
   createReleaseBranchName,
@@ -18,8 +23,8 @@ import {
   createReleaseTitle,
   defaultParseCommitMessage,
   type Diagnostic,
-  getPackageDir,
   getModule,
+  getPackageDir,
   getWorkspaceModules,
   getWorkspaceModulesForTesting,
   maxVersion,
@@ -1075,11 +1080,25 @@ Deno.test("createPackageReleaseNote() format", async (t) => {
 });
 
 Deno.test("createPackageReleaseBranchName() format", async (t) => {
-  const branchName = createPackageReleaseBranchName("@scope/my-package", "1.2.3", new Date(0));
-  assertEquals(branchName, "release-scope-my-package-1.2.3-1970-01-01-00-00-00");
+  const branchName = createPackageReleaseBranchName(
+    "@scope/my-package",
+    "1.2.3",
+    new Date(0),
+  );
+  assertEquals(
+    branchName,
+    "release-scope-my-package-1.2.3-1970-01-01-00-00-00",
+  );
 
-  const branchNameSimple = createPackageReleaseBranchName("simple-package", "0.1.0", new Date(0));
-  assertEquals(branchNameSimple, "release-simple-package-0.1.0-1970-01-01-00-00-00");
+  const branchNameSimple = createPackageReleaseBranchName(
+    "simple-package",
+    "0.1.0",
+    new Date(0),
+  );
+  assertEquals(
+    branchNameSimple,
+    "release-simple-package-0.1.0-1970-01-01-00-00-00",
+  );
 
   await assertSnapshot(t, { branchName, branchNameSimple });
 });
@@ -1122,7 +1141,12 @@ Deno.test("createPackagePrBody() format", async (t) => {
     },
   ];
 
-  const prBody = createPackagePrBody(mockUpdate, diagnostics, "owner/repo", "release-branch");
+  const prBody = createPackagePrBody(
+    mockUpdate,
+    diagnostics,
+    "owner/repo",
+    "release-branch",
+  );
   await assertSnapshot(t, prBody);
 });
 
@@ -1168,7 +1192,12 @@ Deno.test("createPerPackagePrBody() format", async (t) => {
 
   const diagnostics: Diagnostic[] = [];
 
-  const prBody = createPerPackagePrBody(mockUpdates, diagnostics, "owner/repo", "release-branch");
+  const prBody = createPerPackagePrBody(
+    mockUpdates,
+    diagnostics,
+    "owner/repo",
+    "release-branch",
+  );
   await assertSnapshot(t, prBody);
 });
 
@@ -1178,12 +1207,12 @@ Deno.test("getWorkspaceModules() handles single-package repos", async () => {
   const singlePackageConfig = {
     name: "@test/single-package",
     version: "1.0.0",
-    exports: "./mod.ts"
+    exports: "./mod.ts",
   };
 
   await Deno.writeTextFile(
     join(dir, "deno.json"),
-    JSON.stringify(singlePackageConfig, null, 2)
+    JSON.stringify(singlePackageConfig, null, 2),
   );
 
   try {
@@ -1203,12 +1232,12 @@ Deno.test("getWorkspaceModules() fails gracefully for invalid single-package rep
 
   // Create deno.json without name/version
   const invalidConfig = {
-    exports: "./mod.ts"
+    exports: "./mod.ts",
   };
 
   await Deno.writeTextFile(
     join(dir, "deno.json"),
-    JSON.stringify(invalidConfig, null, 2)
+    JSON.stringify(invalidConfig, null, 2),
   );
 
   try {
@@ -1231,7 +1260,7 @@ Deno.test("getPackageDir() works correctly for single-package repos", async () =
   const module: WorkspaceModule = {
     name: "@test/single",
     version: "1.0.0",
-    [pathProp]: "/tmp/test-project/deno.json"
+    [pathProp]: "/tmp/test-project/deno.json",
   };
 
   const packageDir = getPackageDir(module, root);
@@ -1243,7 +1272,7 @@ Deno.test("getPackageDir() works correctly for relative single-package paths", a
   const module: WorkspaceModule = {
     name: "@test/single",
     version: "1.0.0",
-    [pathProp]: "deno.json"  // Just the filename, indicating root
+    [pathProp]: "deno.json", // Just the filename, indicating root
   };
 
   const packageDir = getPackageDir(module, root);

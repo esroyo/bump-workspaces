@@ -294,7 +294,7 @@ export async function tryGetDenoConfig(
 
 export async function getWorkspaceModulesWithOptions(
   root: string,
-  options: GetWorkspaceModulesOptions = {}
+  options: GetWorkspaceModulesOptions = {},
 ): Promise<[string, WorkspaceModule[]]> {
   const { throwOnError = false, quiet = false } = options;
 
@@ -316,14 +316,17 @@ export async function getWorkspaceModulesWithOptions(
         throw new ConfigurationError(errorMessage);
       }
 
-      console.log(errorMessage);
+      if (!quiet) {
+        console.log(errorMessage);
+      }
       Deno.exit(1);
     }
   }
 
   // Existing workspace logic
   if (!Array.isArray(workspaces)) {
-    const errorMessage = red("Error") + " deno.json workspace field should be an array of strings.";
+    const errorMessage = red("Error") +
+      " deno.json workspace field should be an array of strings.";
 
     if (throwOnError) {
       throw new ConfigurationError(errorMessage);
@@ -336,7 +339,8 @@ export async function getWorkspaceModulesWithOptions(
   const result = [];
   for (const workspace of workspaces) {
     if (typeof workspace !== "string") {
-      const errorMessage = "deno.json workspace field should be an array of strings.";
+      const errorMessage =
+        "deno.json workspace field should be an array of strings.";
 
       if (throwOnError) {
         throw new ConfigurationError(errorMessage);
@@ -360,14 +364,20 @@ export async function getWorkspaceModulesWithOptions(
 export async function getWorkspaceModules(
   root: string,
 ): Promise<[string, WorkspaceModule[]]> {
-  return getWorkspaceModulesWithOptions(root, { throwOnError: false, quiet: false });
+  return getWorkspaceModulesWithOptions(root, {
+    throwOnError: false,
+    quiet: false,
+  });
 }
 
 // Test-friendly function - throws errors instead of exiting
 export async function getWorkspaceModulesForTesting(
   root: string,
 ): Promise<[string, WorkspaceModule[]]> {
-  return getWorkspaceModulesWithOptions(root, { throwOnError: true, quiet: true });
+  return getWorkspaceModulesWithOptions(root, {
+    throwOnError: true,
+    quiet: true,
+  });
 }
 
 export function getModule(module: string, modules: WorkspaceModule[]) {
@@ -630,15 +640,21 @@ export async function createIndividualPRs({
   base: string;
   releaseNotePath: string;
   root: string;
-  dryRun: boolean | 'git';
+  dryRun: boolean | "git";
 }) {
   if (dryRun === "git") {
     console.log(cyan("Git dry run mode - skipping individual PR creation"));
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
-      const branchName = createPackageReleaseBranchName(module.name, update.to, now);
+      const branchName = createPackageReleaseBranchName(
+        module.name,
+        update.to,
+        now,
+      );
       console.log(`Would create branch: ${branchName} for ${module.name}`);
-      console.log(`Would create PR: chore(${module.name}): release ${update.to}`);
+      console.log(
+        `Would create PR: chore(${module.name}): release ${update.to}`,
+      );
     }
     return;
   }
@@ -648,7 +664,11 @@ export async function createIndividualPRs({
 
   for (const update of updates) {
     const module = getModule(update.summary.module, modules)!;
-    const branchName = createPackageReleaseBranchName(module.name, update.to, now);
+    const branchName = createPackageReleaseBranchName(
+      module.name,
+      update.to,
+      now,
+    );
 
     console.log(`Creating individual PR for ${cyan(module.name)}`);
 
@@ -661,7 +681,8 @@ export async function createIndividualPRs({
     const packageReleaseNote = createPackageReleaseNote(update, now);
 
     await ensureFile(packageReleaseNotePath);
-    const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+    const existingContent = await Deno.readTextFile(packageReleaseNotePath)
+      .catch(() => "");
     await Deno.writeTextFile(
       packageReleaseNotePath,
       packageReleaseNote + "\n" + existingContent,
@@ -673,8 +694,8 @@ export async function createIndividualPRs({
     await $`git push origin ${branchName}`;
 
     // Create PR for this package
-    const packageDiagnostics = diagnostics.filter(d =>
-      update.summary.commits.some(c => c.hash === d.commit.hash)
+    const packageDiagnostics = diagnostics.filter((d) =>
+      update.summary.commits.some((c) => c.hash === d.commit.hash)
     );
 
     const openedPr = await octoKit.request(
@@ -686,11 +707,18 @@ export async function createIndividualPRs({
         head: branchName,
         draft: false,
         title: `chore(${module.name}): release ${update.to}`,
-        body: createPackagePrBody(update, packageDiagnostics, githubRepo, branchName),
+        body: createPackagePrBody(
+          update,
+          packageDiagnostics,
+          githubRepo,
+          branchName,
+        ),
       },
     );
 
-    console.log(`Created PR for ${module.name}: ${cyan(openedPr.data.html_url)}`);
+    console.log(
+      `Created PR for ${module.name}: ${cyan(openedPr.data.html_url)}`,
+    );
 
     // Switch back to base branch for next iteration
     await $`git checkout ${base}`;
@@ -724,7 +752,7 @@ export async function createSinglePRWithPackageBreakdown({
   individualReleaseNotes: boolean;
   releaseNotePath: string;
   root: string;
-  dryRun: boolean | 'git';
+  dryRun: boolean | "git";
 }) {
   // Create individual release notes in package directories
   if (individualReleaseNotes) {
@@ -735,7 +763,8 @@ export async function createSinglePRWithPackageBreakdown({
       const packageReleaseNote = createPackageReleaseNote(update, now);
 
       await ensureFile(packageReleaseNotePath);
-      const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+      const existingContent = await Deno.readTextFile(packageReleaseNotePath)
+        .catch(() => "");
       await Deno.writeTextFile(
         packageReleaseNotePath,
         packageReleaseNote + "\n" + existingContent,
@@ -747,7 +776,9 @@ export async function createSinglePRWithPackageBreakdown({
   const releaseNote = createReleaseNote(updates, modules, now);
   const workspaceReleaseNotePath = join(root, releaseNotePath);
   await ensureFile(workspaceReleaseNotePath);
-  const existingWorkspaceContent = await Deno.readTextFile(workspaceReleaseNotePath).catch(() => "");
+  const existingWorkspaceContent = await Deno.readTextFile(
+    workspaceReleaseNotePath,
+  ).catch(() => "");
   await Deno.writeTextFile(
     workspaceReleaseNotePath,
     releaseNote + "\n" + existingWorkspaceContent,
@@ -758,7 +789,9 @@ export async function createSinglePRWithPackageBreakdown({
   if (dryRun === "git") {
     console.log(cyan("Git dry run mode - skipping git operations"));
     console.log(`Would create branch: ${branchName}`);
-    console.log(`Would create PR: chore: release packages ${createReleaseTitle(now)}`);
+    console.log(
+      `Would create PR: chore: release packages ${createReleaseTitle(now)}`,
+    );
     return;
   }
 
@@ -770,7 +803,9 @@ export async function createSinglePRWithPackageBreakdown({
 
   await $`deno fmt ${workspaceReleaseNotePath}`;
   await $`git add .`;
-  await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: release packages ${createReleaseTitle(now)}"`;
+  await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: release packages ${
+    createReleaseTitle(now)
+  }"`;
   await $`git push origin ${branchName}`;
 
   // Create PR
@@ -783,7 +818,12 @@ export async function createSinglePRWithPackageBreakdown({
       head: branchName,
       draft: true,
       title: `chore: release packages ${createReleaseTitle(now)}`,
-      body: createPerPackagePrBody(updates, diagnostics, githubRepo, branchName),
+      body: createPerPackagePrBody(
+        updates,
+        diagnostics,
+        githubRepo,
+        branchName,
+      ),
     },
   );
 
@@ -793,8 +833,8 @@ export async function createSinglePRWithPackageBreakdown({
 export async function createIndividualTags(
   updates: VersionUpdateResult[],
   modules: WorkspaceModule[],
-  gitUserName: string,
-  gitUserEmail: string,
+  _gitUserName: string,
+  _gitUserEmail: string,
 ) {
   console.log("Creating individual tags for each package");
 
@@ -809,9 +849,15 @@ export async function createIndividualTags(
   }
 }
 
-export function createPackageReleaseNote(update: VersionUpdateResult, date: Date): string {
-  const heading = `### ${update.summary.module} ${update.to} (${createReleaseTitle(date)})\n\n`;
-  return heading + update.summary.commits.map((c) => `- ${c.subject}\n`).join("");
+export function createPackageReleaseNote(
+  update: VersionUpdateResult,
+  date: Date,
+): string {
+  const heading = `### ${update.summary.module} ${update.to} (${
+    createReleaseTitle(date)
+  })\n\n`;
+  return heading +
+    update.summary.commits.map((c) => `- ${c.subject}\n`).join("");
 }
 
 export function createPackagePrBody(
@@ -825,17 +871,25 @@ export function createPackagePrBody(
   return `Release ${module} ${update.to}
 
 **Changes:**
-${update.summary.commits.map(c => `- ${c.subject}`).join('\n')}
+${update.summary.commits.map((c) => `- ${c.subject}`).join("\n")}
 
 **Version Info:**
 - From: ${update.from}
 - To: ${update.to}
 - Type: ${update.diff}
 
-${diagnostics.length > 0 ? `
+${
+    diagnostics.length > 0
+      ? `
 **Diagnostics:**
-${diagnostics.map(d => `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`).join('\n')}
-` : ''}
+${
+        diagnostics.map((d) =>
+          `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`
+        ).join("\n")
+      }
+`
+      : ""
+  }
 
 ---
 
@@ -857,12 +911,12 @@ export function createPerPackagePrBody(
     "|" + [u.summary.module, u.from, u.to, u.diff].join("|") + "|"
   ).join("\n");
 
-  const packageSections = updates.map(update => {
+  const packageSections = updates.map((update) => {
     return `### ${update.summary.module} ${update.to}
 
-${update.summary.commits.map(c => `- ${c.subject}`).join('\n')}
+${update.summary.commits.map((c) => `- ${c.subject}`).join("\n")}
 `;
-  }).join('\n');
+  }).join("\n");
 
   return `Release multiple packages:
 
@@ -874,11 +928,19 @@ ${table}
 
 ${packageSections}
 
-${diagnostics.length > 0 ? `
+${
+    diagnostics.length > 0
+      ? `
 ## Diagnostics
 
-${diagnostics.map(d => `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`).join('\n')}
-` : ''}
+${
+        diagnostics.map((d) =>
+          `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`
+        ).join("\n")
+      }
+`
+      : ""
+  }
 
 ---
 
@@ -890,9 +952,14 @@ git fetch upstream ${releaseBranch} && git checkout -b ${releaseBranch} upstream
 `;
 }
 
-export function createPackageReleaseBranchName(packageName: string, version: string, date: Date): string {
-  const safeName = packageName.replace('@', '').replace('/', '-');
-  const dateStr = date.toISOString().replace("T", "-").replaceAll(":", "-").replace(/\..+/, "");
+export function createPackageReleaseBranchName(
+  packageName: string,
+  version: string,
+  date: Date,
+): string {
+  const safeName = packageName.replace("@", "").replace("/", "-");
+  const dateStr = date.toISOString().replace("T", "-").replaceAll(":", "-")
+    .replace(/\..+/, "");
   return `release-${safeName}-${version}-${dateStr}`;
 }
 
@@ -901,7 +968,7 @@ export function getPackageDir(module: WorkspaceModule, root: string): string {
   const configPath = module[pathProp];
 
   // For single-package repos, the config path is the root deno.json
-  const packageDir = configPath.replace(/\/deno\.jsonc?$/, '');
+  const packageDir = configPath.replace(/\/deno\.jsonc?$/, "");
 
   // If packageDir is already absolute, return it as-is
   if (isAbsolute(packageDir)) {
@@ -920,7 +987,9 @@ export function getPackageDir(module: WorkspaceModule, root: string): string {
 /**
  * Captures the current git state for later restoration
  */
-async function captureGitState(options: GitContextOptions = {}): Promise<GitState | null> {
+async function captureGitState(
+  options: GitContextOptions = {},
+): Promise<GitState | null> {
   try {
     const cwd = options.workingDirectory || Deno.cwd();
 
@@ -932,7 +1001,9 @@ async function captureGitState(options: GitContextOptions = {}): Promise<GitStat
     const hasUncommittedChanges = status.trim().length > 0;
 
     if (!options.quiet) {
-      console.log(`Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`);
+      console.log(
+        `Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`,
+      );
     }
 
     return {
@@ -953,7 +1024,7 @@ async function captureGitState(options: GitContextOptions = {}): Promise<GitStat
  */
 async function restoreGitState(
   state: GitState,
-  options: GitContextOptions = {}
+  options: GitContextOptions = {},
 ): Promise<boolean> {
   try {
     const gitCmd = options.workingDirectory
@@ -964,7 +1035,9 @@ async function restoreGitState(
 
     if (currentBranch.trim() !== state.branch) {
       if (!options.quiet) {
-        console.log(`Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`);
+        console.log(
+          `Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`,
+        );
       }
       await gitCmd(`checkout ${state.branch}`).quiet();
     } else {
@@ -979,8 +1052,13 @@ async function restoreGitState(
     return true;
   } catch (error) {
     if (!options.quiet) {
-      console.warn(`Failed to restore git state to branch "${state.branch}":`, error);
-      console.warn(`You may need to manually run: git checkout ${state.branch}`);
+      console.warn(
+        `Failed to restore git state to branch "${state.branch}":`,
+        error,
+      );
+      console.warn(
+        `You may need to manually run: git checkout ${state.branch}`,
+      );
     }
     return false;
   }
@@ -1019,14 +1097,16 @@ async function restoreGitState(
  */
 export async function withGitContext<T>(
   callback: () => Promise<T>,
-  options: GitContextOptions = {}
+  options: GitContextOptions = {},
 ): Promise<T> {
   // Capture current git state
   const initialState = await captureGitState(options);
 
   if (!initialState) {
     if (!options.quiet) {
-      console.warn("Could not capture git state - proceeding without restoration");
+      console.warn(
+        "Could not capture git state - proceeding without restoration",
+      );
     }
     // Still execute callback, but without restoration
     return await callback();
@@ -1036,7 +1116,6 @@ export async function withGitContext<T>(
     // Execute the callback
     const result = await callback();
     return result;
-
   } finally {
     // Always restore git state, even if callback threw
     await restoreGitState(initialState, options);
@@ -1047,10 +1126,10 @@ export async function withGitContext<T>(
  * Specialized version for testing scenarios
  */
 export async function withGitContextForTesting<T>(
-  callback: () => Promise<T>
+  callback: () => Promise<T>,
 ): Promise<T> {
   return withGitContext(callback, {
-    quiet: true,  // Don't spam test output
+    quiet: true, // Don't spam test output
   });
 }
 

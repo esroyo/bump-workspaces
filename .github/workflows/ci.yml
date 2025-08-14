@@ -4,19 +4,26 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+
+    strategy:
+      matrix:
+        deno-version: [v2.x]
+
     steps:
+      - name: Install lcov
+        run: sudo apt-get install -y lcov
       - uses: actions/checkout@v3
-      - uses: denoland/setup-deno@v1
+      - uses: denoland/setup-deno@v2
       - run: deno fmt --check
       - run: deno lint
       - name: Test
         run: |
           git fetch origin # some branches are necessary for testing
-          deno task cov
+          deno task coverage
       - uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
