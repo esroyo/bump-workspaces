@@ -1,5 +1,14 @@
 ### 2025.08.14
 
+#### @esroyo/deno-bump-workspaces 0.2.1 (patch)
+
+- fix: bumping version on single-packages
+- fix: avoid hardcoded "Releases.md" comment
+- fix: avoid error on git checkout cmd
+- chore: avoid dev files on publish
+
+### 2025.08.14
+
 #### @esroyo/deno-bump-workspaces 0.2.0 (minor)
 
 - feat: support standalone packages
