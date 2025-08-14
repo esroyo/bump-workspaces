@@ -1045,10 +1045,6 @@ async function restoreGitState(
   options: GitContextOptions = {},
 ): Promise<boolean> {
   try {
-    const gitCmd = options.workingDirectory
-      ? (cmd: string) => $`git -C ${options.workingDirectory!} ${cmd}`
-      : (cmd: string) => $`git ${cmd}`;
-
     const currentBranch = await getCurrentGitBranch();
 
     if (currentBranch.trim() !== state.branch) {
@@ -1057,7 +1053,7 @@ async function restoreGitState(
           `Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`,
         );
       }
-      await gitCmd(`checkout ${state.branch}`).quiet();
+      await $`git checkout ${state.branch}`.quiet();
     } else {
       if (!options.quiet) {
         console.log(`Already on target branch: ${state.branch}`);
