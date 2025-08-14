@@ -494,3 +494,76 @@ git fetch upstream release-1970-01-01-00-00-00 && git checkout -b release-1970-0
 \`\`\`
 "
 `;
+
+snapshot[`createPackageReleaseNote() format 1`] = `
+"### @scope/test-package 1.1.0 (1970.01.01)
+
+- feat(test-package): add new feature
+- fix(test-package): fix critical bug
+"
+`;
+
+snapshot[`createPackageReleaseBranchName() format 1`] = `
+{
+  branchName: "release-scope-my-package-1.2.3-1970-01-01-00-00-00",
+  branchNameSimple: "release-simple-package-0.1.0-1970-01-01-00-00-00",
+}
+`;
+
+snapshot[`createPackagePrBody() format 1`] = `
+"Release @scope/test-package 1.1.0
+
+**Changes:**
+- feat(test-package): add new feature
+- fix(test-package): fix critical bug
+
+**Version Info:**
+- From: 1.0.0
+- To: 1.1.0
+- Type: minor
+
+
+**Diagnostics:**
+- [some unknown commit](/owner/repo/commit/xyz789): Unknown commit format
+
+
+---
+
+To make edits to this PR:
+
+\`\`\`sh
+git fetch upstream release-branch && git checkout -b release-branch upstream/release-branch
+\`\`\`
+"
+`;
+
+snapshot[`createPerPackagePrBody() format 1`] = `
+"Release multiple packages:
+
+| Package | From | To | Type |
+|---------|------|----|----- |
+|@scope/package-a|1.0.0|1.1.0|minor|
+|@scope/package-b|2.0.0|2.0.1|patch|
+
+## Package Details
+
+### @scope/package-a 1.1.0
+
+- feat(package-a): add feature A
+
+### @scope/package-b 2.0.1
+
+- fix(package-b): fix bug B
+
+
+
+
+---
+
+To make edits to this PR:
+
+\`\`\`sh
+git fetch upstream release-branch && git checkout -b release-branch upstream/release-branch
+\`\`\`
+"
+`;

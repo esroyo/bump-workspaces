@@ -1,8 +1,12 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
-
+import { $ } from "@david/dax";
+import { Octokit } from "npm:octokit@^3.1";
+import { cyan } from "@std/fmt/colors";
+import { ensureFile } from "@std/fs/ensure-file";
 import { parse as parseJsonc } from "@std/jsonc/parse";
 import { join } from "@std/path/join";
 import { resolve } from "@std/path/resolve";
+import { isAbsolute } from "@std/path/is-absolute";
 import {
   format as formatSemver,
   increment,
@@ -86,6 +90,27 @@ export type VersionUpdateResult = {
   path: string;
   summary: VersionBumpSummary;
 };
+
+/**
+ * Git context state that can be captured and restored
+ */
+export interface GitState {
+  branch: string;
+  workingDirectory: string;
+  hasUncommittedChanges: boolean;
+}
+
+/**
+ * Options for git context management
+ */
+export interface GitContextOptions {
+  /** Whether to stash uncommitted changes before starting (default: false) */
+  stashChanges?: boolean;
+  /** Whether to suppress restoration logging (default: false) */
+  quiet?: boolean;
+  /** Custom working directory (default: current directory) */
+  workingDirectory?: string;
+}
 
 const RE_DEFAULT_PATTERN = /^([^:()]+)(?:\((.+)\))?(\!)?: (.*)$/;
 const REGEXP_UNSTABLE_SCOPE = /^(unstable\/(.+)|(.+)\/unstable)$/;
@@ -514,4 +539,450 @@ export function createReleaseTitle(d: Date) {
   const month = (d.getUTCMonth() + 1).toString().padStart(2, "0");
   const date = d.getUTCDate().toString().padStart(2, "0");
   return `${year}.${month}.${date}`;
+}
+
+export async function createIndividualPRs({
+  updates,
+  modules,
+  diagnostics,
+  now,
+  gitUserName,
+  gitUserEmail,
+  githubToken,
+  githubRepo,
+  base,
+  releaseNotePath,
+  root,
+  dryRun,
+}: {
+  updates: VersionUpdateResult[];
+  modules: WorkspaceModule[];
+  diagnostics: Diagnostic[];
+  now: Date;
+  gitUserName: string;
+  gitUserEmail: string;
+  githubToken: string;
+  githubRepo: string;
+  base: string;
+  releaseNotePath: string;
+  root: string;
+  dryRun: boolean | 'git';
+}) {
+  if (dryRun === "git") {
+    console.log(cyan("Git dry run mode - skipping individual PR creation"));
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      const branchName = createPackageReleaseBranchName(module.name, update.to, now);
+      console.log(`Would create branch: ${branchName} for ${module.name}`);
+      console.log(`Would create PR: chore(${module.name}): release ${update.to}`);
+    }
+    return;
+  }
+
+  const octoKit = new Octokit({ auth: githubToken });
+  const [owner, repo] = githubRepo.split("/");
+
+  for (const update of updates) {
+    const module = getModule(update.summary.module, modules)!;
+    const branchName = createPackageReleaseBranchName(module.name, update.to, now);
+
+    console.log(`Creating individual PR for ${cyan(module.name)}`);
+
+    // Create branch for this package
+    await $`git checkout -b ${branchName}`;
+
+    // Create package-specific release note in package directory
+    const packageDir = getPackageDir(module, root);
+    const packageReleaseNotePath = join(packageDir, releaseNotePath);
+    const packageReleaseNote = createPackageReleaseNote(update, now);
+
+    await ensureFile(packageReleaseNotePath);
+    const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+    await Deno.writeTextFile(
+      packageReleaseNotePath,
+      packageReleaseNote + "\n" + existingContent,
+    );
+    await $`git add ${packageReleaseNotePath}`;
+
+    await $`git add .`;
+    await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore(${module.name}): release ${update.to}"`;
+    await $`git push origin ${branchName}`;
+
+    // Create PR for this package
+    const packageDiagnostics = diagnostics.filter(d =>
+      update.summary.commits.some(c => c.hash === d.commit.hash)
+    );
+
+    const openedPr = await octoKit.request(
+      "POST /repos/{owner}/{repo}/pulls",
+      {
+        owner,
+        repo,
+        base: base,
+        head: branchName,
+        draft: false,
+        title: `chore(${module.name}): release ${update.to}`,
+        body: createPackagePrBody(update, packageDiagnostics, githubRepo, branchName),
+      },
+    );
+
+    console.log(`Created PR for ${module.name}: ${cyan(openedPr.data.html_url)}`);
+
+    // Switch back to base branch for next iteration
+    await $`git checkout ${base}`;
+  }
+}
+
+export async function createSinglePRWithPackageBreakdown({
+  updates,
+  modules,
+  diagnostics,
+  now,
+  gitUserName,
+  gitUserEmail,
+  githubToken,
+  githubRepo,
+  base,
+  individualReleaseNotes,
+  releaseNotePath,
+  root,
+  dryRun,
+}: {
+  updates: VersionUpdateResult[];
+  modules: WorkspaceModule[];
+  diagnostics: Diagnostic[];
+  now: Date;
+  gitUserName: string;
+  gitUserEmail: string;
+  githubToken: string;
+  githubRepo: string;
+  base: string;
+  individualReleaseNotes: boolean;
+  releaseNotePath: string;
+  root: string;
+  dryRun: boolean | 'git';
+}) {
+  // Create individual release notes in package directories
+  if (individualReleaseNotes) {
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      const packageDir = getPackageDir(module, root);
+      const packageReleaseNotePath = join(packageDir, releaseNotePath);
+      const packageReleaseNote = createPackageReleaseNote(update, now);
+
+      await ensureFile(packageReleaseNotePath);
+      const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+      await Deno.writeTextFile(
+        packageReleaseNotePath,
+        packageReleaseNote + "\n" + existingContent,
+      );
+    }
+  }
+
+  // Also create the main release note in workspace root
+  const releaseNote = createReleaseNote(updates, modules, now);
+  const workspaceReleaseNotePath = join(root, releaseNotePath);
+  await ensureFile(workspaceReleaseNotePath);
+  const existingWorkspaceContent = await Deno.readTextFile(workspaceReleaseNotePath).catch(() => "");
+  await Deno.writeTextFile(
+    workspaceReleaseNotePath,
+    releaseNote + "\n" + existingWorkspaceContent,
+  );
+
+  const branchName = createReleaseBranchName(now);
+
+  if (dryRun === "git") {
+    console.log(cyan("Git dry run mode - skipping git operations"));
+    console.log(`Would create branch: ${branchName}`);
+    console.log(`Would create PR: chore: release packages ${createReleaseTitle(now)}`);
+    return;
+  }
+
+  console.log(`Creating single PR with per-package breakdown`);
+  await $`git checkout -b ${branchName}`;
+
+  const octoKit = new Octokit({ auth: githubToken });
+  const [owner, repo] = githubRepo.split("/");
+
+  await $`deno fmt ${workspaceReleaseNotePath}`;
+  await $`git add .`;
+  await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: release packages ${createReleaseTitle(now)}"`;
+  await $`git push origin ${branchName}`;
+
+  // Create PR
+  const openedPr = await octoKit.request(
+    "POST /repos/{owner}/{repo}/pulls",
+    {
+      owner,
+      repo,
+      base: base,
+      head: branchName,
+      draft: true,
+      title: `chore: release packages ${createReleaseTitle(now)}`,
+      body: createPerPackagePrBody(updates, diagnostics, githubRepo, branchName),
+    },
+  );
+
+  console.log("New pull request:", cyan(openedPr.data.html_url));
+}
+
+export async function createIndividualTags(
+  updates: VersionUpdateResult[],
+  modules: WorkspaceModule[],
+  gitUserName: string,
+  gitUserEmail: string,
+) {
+  console.log("Creating individual tags for each package");
+
+  for (const update of updates) {
+    const module = getModule(update.summary.module, modules)!;
+    const tagName = `${module.name}@${update.to}`;
+    const tagMessage = `Release ${module.name} ${update.to}`;
+
+    console.log(`Creating tag: ${cyan(tagName)}`);
+    await $`git tag -a ${tagName} -m ${tagMessage}`;
+    await $`git push origin ${tagName}`;
+  }
+}
+
+export function createPackageReleaseNote(update: VersionUpdateResult, date: Date): string {
+  const heading = `### ${update.summary.module} ${update.to} (${createReleaseTitle(date)})\n\n`;
+  return heading + update.summary.commits.map((c) => `- ${c.subject}\n`).join("");
+}
+
+export function createPackagePrBody(
+  update: VersionUpdateResult,
+  diagnostics: Diagnostic[],
+  githubRepo: string,
+  releaseBranch: string,
+): string {
+  const module = update.summary.module;
+
+  return `Release ${module} ${update.to}
+
+**Changes:**
+${update.summary.commits.map(c => `- ${c.subject}`).join('\n')}
+
+**Version Info:**
+- From: ${update.from}
+- To: ${update.to}
+- Type: ${update.diff}
+
+${diagnostics.length > 0 ? `
+**Diagnostics:**
+${diagnostics.map(d => `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`).join('\n')}
+` : ''}
+
+---
+
+To make edits to this PR:
+
+\`\`\`sh
+git fetch upstream ${releaseBranch} && git checkout -b ${releaseBranch} upstream/${releaseBranch}
+\`\`\`
+`;
+}
+
+export function createPerPackagePrBody(
+  updates: VersionUpdateResult[],
+  diagnostics: Diagnostic[],
+  githubRepo: string,
+  releaseBranch: string,
+): string {
+  const table = updates.map((u) =>
+    "|" + [u.summary.module, u.from, u.to, u.diff].join("|") + "|"
+  ).join("\n");
+
+  const packageSections = updates.map(update => {
+    return `### ${update.summary.module} ${update.to}
+
+${update.summary.commits.map(c => `- ${c.subject}`).join('\n')}
+`;
+  }).join('\n');
+
+  return `Release multiple packages:
+
+| Package | From | To | Type |
+|---------|------|----|----- |
+${table}
+
+## Package Details
+
+${packageSections}
+
+${diagnostics.length > 0 ? `
+## Diagnostics
+
+${diagnostics.map(d => `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`).join('\n')}
+` : ''}
+
+---
+
+To make edits to this PR:
+
+\`\`\`sh
+git fetch upstream ${releaseBranch} && git checkout -b ${releaseBranch} upstream/${releaseBranch}
+\`\`\`
+`;
+}
+
+export function createPackageReleaseBranchName(packageName: string, version: string, date: Date): string {
+  const safeName = packageName.replace('@', '').replace('/', '-');
+  const dateStr = date.toISOString().replace("T", "-").replaceAll(":", "-").replace(/\..+/, "");
+  return `release-${safeName}-${version}-${dateStr}`;
+}
+
+export function getPackageDir(module: WorkspaceModule, root: string): string {
+  // Extract directory path from the module's deno.json path
+  // module[pathProp] could be either relative like "foo/deno.json" or absolute like "/tmp/xyz/bar/deno.json"
+  const configPath = module[pathProp];
+  const packageDir = configPath.replace(/\/deno\.jsonc?$/, '');
+
+  // If packageDir is already absolute, return it as-is
+  if (isAbsolute(packageDir)) {
+    return packageDir;
+  }
+
+  // Otherwise it's relative, so join with root
+  return join(root, packageDir);
+}
+
+/**
+ * Captures the current git state for later restoration
+ */
+async function captureGitState(options: GitContextOptions = {}): Promise<GitState | null> {
+  try {
+    const cwd = options.workingDirectory || Deno.cwd();
+    const gitCmd = options.workingDirectory
+      ? (cmd: string) => $`git -C ${options.workingDirectory!} ${cmd}`
+      : (cmd: string) => $`git ${cmd}`;
+
+    // Get current branch
+    const branch = await gitCmd("branch --show-current").text();
+
+    // Check for uncommitted changes
+    const status = await gitCmd("status --porcelain").text();
+    const hasUncommittedChanges = status.trim().length > 0;
+
+    if (!options.quiet) {
+      console.log(`🔄 Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`);
+    }
+
+    return {
+      branch: branch.trim(),
+      workingDirectory: cwd,
+      hasUncommittedChanges,
+    };
+  } catch (error) {
+    if (!options.quiet) {
+      console.warn("⚠️ Failed to capture git state:", error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Restores git state to a previously captured state
+ */
+async function restoreGitState(
+  state: GitState,
+  options: GitContextOptions = {}
+): Promise<boolean> {
+  try {
+    const gitCmd = options.workingDirectory
+      ? (cmd: string) => $`git -C ${options.workingDirectory!} ${cmd}`
+      : (cmd: string) => $`git ${cmd}`;
+
+    const currentBranch = await gitCmd("branch --show-current").text();
+
+    if (currentBranch.trim() !== state.branch) {
+      if (!options.quiet) {
+        console.log(`🧹 Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`);
+      }
+      await gitCmd(`checkout ${state.branch}`).quiet();
+    } else {
+      if (!options.quiet) {
+        console.log(`✅ Already on target branch: ${state.branch}`);
+      }
+    }
+
+    if (!options.quiet) {
+      console.log(`✅ Git state restored successfully`);
+    }
+    return true;
+  } catch (error) {
+    if (!options.quiet) {
+      console.warn(`⚠️ Failed to restore git state to branch "${state.branch}":`, error);
+      console.warn(`🔧 You may need to manually run: git checkout ${state.branch}`);
+    }
+    return false;
+  }
+}
+
+/**
+ * Executes a callback function while managing git state backup and restoration.
+ *
+ * This utility automatically:
+ * - Captures the current git state (branch, working directory, etc.)
+ * - Executes your callback function
+ * - Restores the original git state afterwards (even if callback throws)
+ *
+ * @param callback - The function to execute within the git context
+ * @param options - Configuration options for git context management
+ * @returns Promise resolving to the callback's return value
+ *
+ * @example
+ * ```typescript
+ * // Simple usage
+ * await withGitContext(async () => {
+ *   await $`git checkout some-branch`;
+ *   await $`git checkout -b feature-branch`;
+ *   // Do work...
+ *   // Original branch is automatically restored
+ * });
+ *
+ * // With options
+ * await withGitContext(async () => {
+ *   // Git operations here
+ * }, {
+ *   quiet: true,
+ *   stashChanges: true
+ * });
+ * ```
+ */
+export async function withGitContext<T>(
+  callback: () => Promise<T>,
+  options: GitContextOptions = {}
+): Promise<T> {
+  // Capture current git state
+  const initialState = await captureGitState(options);
+
+  if (!initialState) {
+    if (!options.quiet) {
+      console.warn("⚠️ Could not capture git state - proceeding without restoration");
+    }
+    // Still execute callback, but without restoration
+    return await callback();
+  }
+
+  try {
+    // Execute the callback
+    const result = await callback();
+    return result;
+
+  } finally {
+    // Always restore git state, even if callback threw
+    await restoreGitState(initialState, options);
+  }
+}
+
+/**
+ * Specialized version for testing scenarios
+ */
+export async function withGitContextForTesting<T>(
+  callback: () => Promise<T>
+): Promise<T> {
+  return withGitContext(callback, {
+    quiet: true,  // Don't spam test output
+  });
 }

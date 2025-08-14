@@ -171,6 +171,191 @@ BREAKING(crypto/unstable): breaking change to unstable feature
 If this notation is used, the effect of the commit becomes `patch` no matter
 what commit type is used.
 
+# Per-Package Publishing
+
+The bump-workspaces library supports per-package publishing mode, which allows you to create individual releases, tags, and PRs for each package in your workspace instead of a single monolithic release.
+
+## Usage
+
+### Basic Per-Package Mode
+
+```sh
+deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package
+```
+
+### With Individual Options
+
+```sh
+# Create individual PRs for each package
+deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-prs
+
+# Create individual git tags for each package
+deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-tags
+
+# Create individual release notes for each package
+deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-release-notes
+
+# All individual options combined
+deno run -A jsr:@deno/bump-workspaces/cli \
+  --publish-mode per-package \
+  --individual-prs \
+  --individual-tags \
+  --individual-release-notes
+```
+
+### Programmatic Usage
+
+```typescript
+import { bumpWorkspaces } from "jsr:@deno/bump-workspaces";
+
+await bumpWorkspaces({
+  publishMode: "per-package",
+  individualPRs: true,
+  individualTags: true,
+  individualReleaseNotes: true,
+  // ... other options
+});
+```
+
+## Options
+
+### `publishMode`
+- **Type**: `"workspace" | "per-package"`
+- **Default**: `"workspace"`
+- **Description**: Determines the publishing strategy.
+  - `"workspace"`: Creates a single release with all package updates (default behavior)
+  - `"per-package"`: Creates individual releases for each package
+
+### `releaseNotePath`
+- **Type**: `string`
+- **Default**: `"Releases.md"` (workspace mode) or `"CHANGELOG.md"` (per-package mode)
+- **Description**: The filename for release notes. In per-package mode, this file is created in each package directory.
+
+### `individualPRs`
+- **Type**: `boolean`
+- **Default**: `false`
+- **Description**: When using per-package mode, creates individual pull requests for each package instead of a single PR containing all updates.
+
+### `individualTags`
+- **Type**: `boolean`
+- **Default**: `true`
+- **Description**: When using per-package mode, creates individual git tags for each package in the format `package-name@version`.
+
+### `individualReleaseNotes`
+- **Type**: `boolean`
+- **Default**: `false`
+- **Description**: When using per-package mode, creates release note files in each package directory. When `false`, only a workspace-level release note is created.
+
+## Behavior Comparison
+
+### Workspace Mode (Default)
+- ✅ Single release note file (`Releases.md`) in workspace root
+- ✅ Single git commit with all changes
+- ✅ Single pull request
+- ✅ Single git tag (optional)
+- 📁 Consolidated view of all changes
+
+### Per-Package Mode
+- ✅ Release notes in individual package directories (`CHANGELOG.md` by default)
+- ✅ Individual git tags per package (`@scope/package@1.2.3`)
+- ✅ Individual or single PR (configurable)
+- ✅ Granular control over package releases
+- 📦 Package-focused release process
+
+## Examples
+
+### Scenario 1: Individual PRs with Tags
+
+Perfect for teams that want to review each package separately:
+
+```sh
+deno run -A jsr:@deno/bump-workspaces/cli \
+  --publish-mode per-package \
+  --individual-prs \
+  --individual-tags
+```
+
+**Result:**
+- Separate PR for each updated package
+- Individual git tags like `@myorg/utils@1.2.0`, `@myorg/core@2.1.0`
+- `CHANGELOG.md` files in each package directory
+- Single workspace-level `CHANGELOG.md` file
+
+### Scenario 2: Single PR with Package Breakdown
+
+Good for maintaining a single review process while organizing by package:
+
+```sh
+deno run -A jsr:@deno/bump-workspaces/cli \
+  --publish-mode per-package \
+  --individual-tags \
+  --individual-release-notes
+```
+
+**Result:**
+- Single PR with per-package sections
+- Individual git tags for each package
+- `CHANGELOG.md` files in each package directory (if `--individual-release-notes`)
+- Single workspace-level `CHANGELOG.md` file
+
+### Scenario 3: Full Individual Publishing
+
+Maximum granularity for independent package lifecycles:
+
+```sh
+deno run -A jsr:@deno/bump-workspaces/cli \
+  --publish-mode per-package \
+  --individual-prs \
+  --individual-tags \
+  --individual-release-notes
+```
+
+**Result:**
+- Separate PR for each package
+- Individual git tags for each package
+- `CHANGELOG.md` files in each package directory
+- Workspace-level `CHANGELOG.md` file
+
+## Git Tag Format
+
+In per-package mode with `individualTags: true`, git tags are created in the format:
+
+```
+package-name@version
+```
+
+Examples:
+- `@myorg/utils@1.2.0`
+- `@myorg/core@2.1.0`
+- `simple-package@0.5.0`
+
+## Release Note Files
+
+### Workspace Mode
+- **Main release notes**: `Releases.md` in workspace root
+
+### Per-Package Mode
+- **Workspace release notes**: `CHANGELOG.md` in workspace root (always created)
+- **Package release notes**: `CHANGELOG.md` in each package directory (when `individualReleaseNotes: true`)
+
+### File Structure Example
+```
+workspace/
+├── CHANGELOG.md                    # Workspace-level (per-package mode)
+├── packages/
+│   ├── utils/
+│   │   ├── CHANGELOG.md           # Package-level (if individualReleaseNotes: true)
+│   │   └── deno.json
+│   └── core/
+│       ├── CHANGELOG.md           # Package-level (if individualReleaseNotes: true)
+│       └── deno.json
+└── deno.json
+```
+
+**Package directory detection**: Release notes are automatically placed in the correct package directory based on the package's `deno.json` location. For example:
+- Package at `./packages/utils/deno.json` → Release notes at `./packages/utils/CHANGELOG.md`
+- Package at `./foo/deno.json` → Release notes at `./foo/CHANGELOG.md`
+
 # License
 
 MIT

@@ -1,5 +1,4 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
-
 import { $ } from "@david/dax";
 import { Octokit } from "npm:octokit@^3.1";
 import { cyan, magenta } from "@std/fmt/colors";
@@ -27,17 +26,23 @@ import {
   applyVersionBump,
   checkModuleName,
   type Commit,
+  createIndividualPRs,
+  createIndividualTags,
+  createPackageReleaseNote,
   createPrBody,
   createReleaseBranchName,
   createReleaseNote,
   createReleaseTitle,
+  createSinglePRWithPackageBreakdown,
   defaultParseCommitMessage,
   type Diagnostic,
   getModule,
+  getPackageDir,
   getWorkspaceModules,
   summarizeVersionBumpsByModule,
   type VersionBump,
   type VersionUpdateResult,
+  withGitContext,
   type WorkspaceModule,
 } from "./util.ts";
 
@@ -70,23 +75,20 @@ export type BumpWorkspaceOptions = {
   dryRun?: boolean | "git";
   /** The import map path. Default is deno.json(c) at the root. */
   importMap?: string;
-  /** The path to release note markdown file. The default is `Releases.md` */
+  /** The path to release note markdown file. The default is `Releases.md` for workspace mode, `CHANGELOG.md` for per-package mode */
   releaseNotePath?: string;
+  /** Publishing mode: "workspace" (default) creates single release, "per-package" creates individual releases */
+  publishMode?: "workspace" | "per-package";
+  /** When using per-package mode, whether to create individual PRs for each package */
+  individualPRs?: boolean;
+  /** When using per-package mode, whether to create individual git tags for each package */
+  individualTags?: boolean;
+  /** When using per-package mode, whether to create individual release notes for each package */
+  individualReleaseNotes?: boolean;
 };
 
 /**
  * Upgrade the versions of the packages in the workspace using Conventional Commits rules.
- *
- * The workflow of this function is:
- * - Read workspace info from the deno.json in the given `root`.
- * - Read commit messages between the given `start` and `base`.
- *   - `start` defaults to the latest tag in the current branch (=`git describe --tags --abbrev=0`)
- *   - `base` defaults to the current branch (=`git branch --show-current`)
- * - Detect necessary version updates from the commit messages.
- * - Update the versions in the deno.json files.
- * - Create a release note.
- * - Create a git commit with given `gitUserName` and `gitUserEmail`.
- * - Create a pull request, targeting the given `base` branch.
  */
 export async function bumpWorkspaces(
   {
@@ -99,116 +101,201 @@ export async function bumpWorkspaces(
     githubRepo,
     dryRun = false,
     importMap,
-    releaseNotePath = "Releases.md",
+    releaseNotePath,
     root = ".",
+    publishMode = "workspace",
+    individualPRs = false,
+    individualTags = true,
+    individualReleaseNotes = false,
   }: BumpWorkspaceOptions = {},
 ) {
-  const now = new Date();
-  start ??= await $`git describe --tags --abbrev=0`.text();
-  base ??= await $`git branch --show-current`.text();
-  if (!base) {
-    console.error("The current branch is not found.");
-    Deno.exit(1);
-  }
-
-  await $`git checkout ${start}`;
-  const [_oldConfigPath, oldModules] = await getWorkspaceModules(root);
-  await $`git checkout -`;
-  await $`git checkout ${base}`;
-  const [configPath, modules] = await getWorkspaceModules(root);
-  await $`git checkout -`;
-
-  const newBranchName = createReleaseBranchName(now);
-  releaseNotePath = join(root, releaseNotePath);
-
-  const text =
-    await $`git --no-pager log --pretty=format:${separator}%H%B ${start}..${base}`
-      .text();
-
-  const commits = text.split(separator).map((commit) => {
-    const hash = commit.slice(0, 40);
-    commit = commit.slice(40);
-    const i = commit.indexOf("\n");
-    if (i < 0) {
-      return { hash, subject: commit.trim(), body: "" };
+  return withGitContext(async () => {
+    const now = new Date();
+    start ??= await $`git describe --tags --abbrev=0`.text();
+    base ??= await $`git branch --show-current`.text();
+    if (!base) {
+      console.error("The current branch is not found.");
+      Deno.exit(1);
     }
-    const subject = commit.slice(0, i).trim();
-    const body = commit.slice(i + 1).trim();
-    return { hash, subject, body };
-  });
-  commits.shift(); // drop the first empty item
 
-  console.log(
-    `Found ${cyan(commits.length.toString())} commits between ${
-      magenta(start)
-    } and ${magenta(base)}.`,
-  );
-  const versionBumps: VersionBump[] = [];
-  const diagnostics: Diagnostic[] = [];
-  for (const commit of commits) {
-    if (/^v?\d+\.\d+\.\d+/.test(commit.subject)) {
-      // Skip if the commit subject is version bump
-      continue;
+    // Set default release note path based on publish mode
+    if (!releaseNotePath) {
+      releaseNotePath = publishMode === "per-package" ? "CHANGELOG.md" : "Releases.md";
     }
-    if (/^Release \d+\.\d+\.\d+/.test(commit.subject)) {
-      // Skip if the commit subject is release
-      continue;
-    }
-    const parsed = parseCommitMessage(commit, modules);
-    if (Array.isArray(parsed)) {
-      for (const versionBump of parsed) {
-        const diagnostic = checkModuleName(versionBump, modules);
-        if (diagnostic) {
-          diagnostics.push(diagnostic);
-        } else {
-          versionBumps.push(versionBump);
-        }
+
+    await $`git checkout ${start}`;
+    const [_oldConfigPath, oldModules] = await getWorkspaceModules(root);
+    await $`git checkout -`;
+    await $`git checkout ${base}`;
+    const [configPath, modules] = await getWorkspaceModules(root);
+    await $`git checkout -`;
+
+    const newBranchName = createReleaseBranchName(now);
+    const workspaceReleaseNotePath = join(root, releaseNotePath);
+
+    const text =
+      await $`git --no-pager log --pretty=format:${separator}%H%B ${start}..${base}`
+        .text();
+
+    const commits = text.split(separator).map((commit) => {
+      const hash = commit.slice(0, 40);
+      commit = commit.slice(40);
+      const i = commit.indexOf("\n");
+      if (i < 0) {
+        return { hash, subject: commit.trim(), body: "" };
       }
-    } else {
-      // The commit message is completely unknown
-      diagnostics.push(parsed);
-    }
-  }
-  const summaries = summarizeVersionBumpsByModule(versionBumps);
+      const subject = commit.slice(0, i).trim();
+      const body = commit.slice(i + 1).trim();
+      return { hash, subject, body };
+    });
+    commits.shift(); // drop the first empty item
 
-  if (summaries.length === 0) {
-    console.log("No version bumps.");
-    return;
-  }
-
-  console.log(`Updating the versions:`);
-  let importMapPath: string;
-  if (importMap) {
-    console.log(`Using the import map: ${cyan(importMap)}`);
-    importMapPath = importMap;
-  } else {
-    importMapPath = configPath;
-  }
-  const updates: Record<string, VersionUpdateResult> = {};
-  let importMapJson = await Deno.readTextFile(importMapPath);
-  for (const summary of summaries) {
-    const module = getModule(summary.module, modules)!;
-    const oldModule = getModule(summary.module, oldModules);
-    const [importMapJson_, versionUpdate] = await applyVersionBump(
-      summary,
-      module,
-      oldModule,
-      importMapJson,
-      dryRun === true,
+    console.log(
+      `Found ${cyan(commits.length.toString())} commits between ${
+        magenta(start)
+      } and ${magenta(base)}.`,
     );
-    importMapJson = importMapJson_;
-    updates[module.name] = versionUpdate;
-  }
-  console.table(updates, ["diff", "from", "to", "path"]);
+    const versionBumps: VersionBump[] = [];
+    const diagnostics: Diagnostic[] = [];
+    for (const commit of commits) {
+      if (/^v?\d+\.\d+\.\d+/.test(commit.subject)) {
+        // Skip if the commit subject is version bump
+        continue;
+      }
+      if (/^Release \d+\.\d+\.\d+/.test(commit.subject)) {
+        // Skip if the commit subject is release
+        continue;
+      }
+      const parsed = parseCommitMessage(commit, modules);
+      if (Array.isArray(parsed)) {
+        for (const versionBump of parsed) {
+          const diagnostic = checkModuleName(versionBump, modules);
+          if (diagnostic) {
+            diagnostics.push(diagnostic);
+          } else {
+            versionBumps.push(versionBump);
+          }
+        }
+      } else {
+        // The commit message is completely unknown
+        diagnostics.push(parsed);
+      }
+    }
+    const summaries = summarizeVersionBumpsByModule(versionBumps);
 
-  console.log(
-    `Found ${cyan(diagnostics.length.toString())} diagnostics:`,
-  );
-  for (const unknownCommit of diagnostics) {
-    console.log(`  ${unknownCommit.type} ${unknownCommit.commit.subject}`);
-  }
+    if (summaries.length === 0) {
+      console.log("No version bumps.");
+      return;
+    }
 
-  const releaseNote = createReleaseNote(Object.values(updates), modules, now);
+    console.log(`Updating the versions:`);
+    let importMapPath: string;
+    if (importMap) {
+      console.log(`Using the import map: ${cyan(importMap)}`);
+      importMapPath = importMap;
+    } else {
+      importMapPath = configPath;
+    }
+    const updates: Record<string, VersionUpdateResult> = {};
+    let importMapJson = await Deno.readTextFile(importMapPath);
+    for (const summary of summaries) {
+      const module = getModule(summary.module, modules)!;
+      const oldModule = getModule(summary.module, oldModules);
+      const [importMapJson_, versionUpdate] = await applyVersionBump(
+        summary,
+        module,
+        oldModule,
+        importMapJson,
+        dryRun === true,
+      );
+      importMapJson = importMapJson_;
+      updates[module.name] = versionUpdate;
+    }
+    console.table(updates, ["diff", "from", "to", "path"]);
+
+    console.log(
+      `Found ${cyan(diagnostics.length.toString())} diagnostics:`,
+    );
+    for (const unknownCommit of diagnostics) {
+      console.log(`  ${unknownCommit.type} ${unknownCommit.commit.subject}`);
+    }
+
+    // Choose publishing strategy based on publishMode
+    if (publishMode === "per-package") {
+      await publishPerPackage({
+        updates: Object.values(updates),
+        modules,
+        diagnostics,
+        now,
+        dryRun,
+        releaseNotePath,
+        root,
+        importMapPath,
+        importMapJson,
+        gitUserName,
+        gitUserEmail,
+        githubToken,
+        githubRepo,
+        base,
+        individualPRs,
+        individualTags,
+        individualReleaseNotes,
+      });
+    } else {
+      await publishWorkspace({
+        updates: Object.values(updates),
+        modules,
+        diagnostics,
+        now,
+        dryRun,
+        releaseNotePath: workspaceReleaseNotePath,
+        importMapPath,
+        importMapJson,
+        newBranchName,
+        gitUserName,
+        gitUserEmail,
+        githubToken,
+        githubRepo,
+        base,
+      });
+    }
+
+    console.log("Done.");
+  });
+}
+
+async function publishWorkspace({
+  updates,
+  modules,
+  diagnostics,
+  now,
+  dryRun,
+  releaseNotePath,
+  importMapPath,
+  importMapJson,
+  newBranchName,
+  gitUserName,
+  gitUserEmail,
+  githubToken,
+  githubRepo,
+  base,
+}: {
+  updates: VersionUpdateResult[];
+  modules: WorkspaceModule[];
+  diagnostics: Diagnostic[];
+  now: Date;
+  dryRun: boolean | "git";
+  releaseNotePath: string;
+  importMapPath: string;
+  importMapJson: string;
+  newBranchName: string;
+  gitUserName?: string;
+  gitUserEmail?: string;
+  githubToken?: string;
+  githubRepo?: string;
+  base: string;
+}) {
+  const releaseNote = createReleaseNote(updates, modules, now);
 
   if (dryRun === true) {
     console.log();
@@ -266,26 +353,162 @@ export async function bumpWorkspaces(
       console.log(`Creating a pull request.`);
       const octoKit = new Octokit({ auth: githubToken });
       const [owner, repo] = githubRepo.split("/");
-      const openedPr = await octoKit.request(
-        "POST /repos/{owner}/{repo}/pulls",
-        {
-          owner,
-          repo,
-          base: base,
-          head: newBranchName,
-          draft: true,
+        const openedPr = await octoKit.request(
+          "POST /repos/{owner}/{repo}/pulls",
+          {
+            owner,
+            repo,
+            base: base,
+            head: newBranchName,
+            draft: true,
           title: `chore: release ${createReleaseTitle(now)}`,
           body: createPrBody(
-            Object.values(updates),
+            updates,
             diagnostics,
             githubRepo,
             newBranchName,
           ),
-        },
-      );
-      console.log("New pull request:", cyan(openedPr.data.html_url));
+          },
+        );
+        console.log("New pull request:", cyan(openedPr.data.html_url));
     }
+  }
+}
 
-    console.log("Done.");
+async function publishPerPackage({
+  updates,
+  modules,
+  diagnostics,
+  now,
+  dryRun,
+  releaseNotePath,
+  root,
+  importMapPath,
+  importMapJson,
+  gitUserName,
+  gitUserEmail,
+  githubToken,
+  githubRepo,
+  base,
+  individualPRs,
+  individualTags,
+  individualReleaseNotes,
+}: {
+  updates: VersionUpdateResult[];
+  modules: WorkspaceModule[];
+  diagnostics: Diagnostic[];
+  now: Date;
+  dryRun: boolean | "git";
+  releaseNotePath: string;
+  root: string;
+  importMapPath: string;
+  importMapJson: string;
+  gitUserName?: string;
+  gitUserEmail?: string;
+  githubToken?: string;
+  githubRepo?: string;
+  base: string;
+  individualPRs: boolean;
+  individualTags: boolean;
+  individualReleaseNotes: boolean;
+}) {
+  console.log(`Publishing per-package mode with ${updates.length} packages`);
+
+  if (dryRun === true) {
+    console.log(cyan("Dry run mode - showing what would be done:"));
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      console.log(`\n${cyan(`Package: ${module.name}`)}`);
+
+      if (individualReleaseNotes || !individualPRs) {
+        const packageReleaseNote = createPackageReleaseNote(update, now);
+        const packageDir = getPackageDir(module, root);
+        const packageReleaseNotePath = join(packageDir, releaseNotePath);
+        console.log(`Release note path: ${packageReleaseNotePath}`);
+        console.log("Release note:");
+        console.log(packageReleaseNote);
+      }
+
+      if (individualTags) {
+        const tagName = `${module.name}@${update.to}`;
+        console.log(`Would create tag: ${tagName}`);
+      }
+
+      if (individualPRs) {
+        console.log(`Would create individual PR for ${module.name}`);
+      }
+    }
+    return;
+  }
+
+  // Update import map first
+  await Deno.writeTextFile(importMapPath, importMapJson);
+
+  if (individualReleaseNotes) {
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      const packageDir = getPackageDir(module, root);
+      const packageReleaseNotePath = join(packageDir, releaseNotePath);
+      const packageReleaseNote = createPackageReleaseNote(update, now);
+
+      await ensureFile(packageReleaseNotePath);
+      const existingContent = await Deno.readTextFile(packageReleaseNotePath).catch(() => "");
+      await Deno.writeTextFile(
+        packageReleaseNotePath,
+        packageReleaseNote + "\n" + existingContent,
+      );
+    }
+  }
+
+  if (dryRun !== "git") {
+    gitUserName ??= Deno.env.get("GIT_USER_NAME");
+    gitUserEmail ??= Deno.env.get("GIT_USER_EMAIL");
+    githubToken ??= Deno.env.get("GITHUB_TOKEN");
+    githubRepo ??= Deno.env.get("GITHUB_REPOSITORY");
+
+    if (!gitUserName || !gitUserEmail || !githubToken || !githubRepo) {
+      console.error("Required environment variables not set for per-package publishing");
+      Deno.exit(1);
+    }
+  }
+
+  if (individualPRs) {
+    // Create individual PRs for each package
+    await createIndividualPRs({
+      updates,
+      modules,
+      diagnostics,
+      now,
+      gitUserName: gitUserName!,
+      gitUserEmail: gitUserEmail!,
+      githubToken: githubToken!,
+      githubRepo: githubRepo!,
+      base,
+      releaseNotePath,
+      root,
+      dryRun,
+    });
+  } else {
+    // Create single PR but with per-package organization
+    await createSinglePRWithPackageBreakdown({
+      updates,
+      modules,
+      diagnostics,
+      now,
+      gitUserName: gitUserName!,
+      gitUserEmail: gitUserEmail!,
+      githubToken: githubToken!,
+      githubRepo: githubRepo!,
+      base,
+      individualReleaseNotes,
+      releaseNotePath,
+      root,
+      dryRun,
+    });
+  }
+
+  if (individualTags && dryRun !== "git") {
+    // Create individual tags for each package
+    await createIndividualTags(updates, modules, gitUserName!, gitUserEmail!);
   }
 }

@@ -21,18 +21,59 @@ import { bumpWorkspaces } from "./mod.ts";
  * ```sh
  * deno run -A jsr:@deno/bump-workspaces/cli --import-map ./import_map.json
  * ```
+ * 
+ * For per-package publishing mode:
+ * 
+ * ```sh
+ * # Per-package mode with individual PRs and tags
+ * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-prs --individual-tags
+ * 
+ * # Per-package mode with individual release notes
+ * deno run -A jsr:@deno/bump-workspaces/cli --publish-mode per-package --individual-release-notes
+ * ```
  *
  * @module
  */
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args, {
-    string: ["import-map", "release-note-path"],
-    boolean: ["dry-run"],
+    string: [
+      "import-map", 
+      "release-note-path", 
+      "publish-mode"
+    ],
+    boolean: [
+      "dry-run", 
+      "individual-prs", 
+      "individual-tags", 
+      "individual-release-notes"
+    ],
+    alias: {
+      "publish-mode": "publish-mode",
+      "individual-prs": "individual-prs",
+      "individual-tags": "individual-tags", 
+      "individual-release-notes": "individual-release-notes"
+    }
   });
+
+  // Validate publish mode
+  const publishMode = args["publish-mode"];
+  if (publishMode && !["workspace", "per-package"].includes(publishMode)) {
+    console.error("Error: --publish-mode must be either 'workspace' or 'per-package'");
+    Deno.exit(1);
+  }
+
+  // Warn if per-package options are used without per-package mode
+  if (publishMode !== "per-package" && (args["individual-prs"] || args["individual-tags"] || args["individual-release-notes"])) {
+    console.warn("Warning: individual-* options are only effective when --publish-mode is 'per-package'");
+  }
+
   await bumpWorkspaces({
     dryRun: args["dry-run"],
     importMap: args["import-map"],
     releaseNotePath: args["release-note-path"],
+    publishMode: publishMode as "workspace" | "per-package" | undefined,
+    individualPRs: args["individual-prs"],
+    individualTags: args["individual-tags"],
+    individualReleaseNotes: args["individual-release-notes"],
   });
-}

@@ -6,6 +6,10 @@ import denoJson from "./deno.json" with { type: "json" };
 import {
   applyVersionBump,
   checkModuleName,
+  createPackageReleaseBranchName,
+  createPackageReleaseNote,
+  createPackagePrBody,
+  createPerPackagePrBody,
   createPrBody,
   createReleaseBranchName,
   createReleaseNote,
@@ -1034,4 +1038,132 @@ Deno.test("createReleaseBranchName()", () => {
 Deno.test("createReleaseTitle()", () => {
   const date = new Date(0);
   assertEquals(createReleaseTitle(date), "1970.01.01");
+});
+
+Deno.test("createPackageReleaseNote() format", async (t) => {
+  const mockUpdate = {
+    summary: {
+      module: "@scope/test-package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat(test-package): add new feature",
+          body: "",
+          hash: "abc123",
+          tag: "feat",
+        },
+        {
+          subject: "fix(test-package): fix critical bug",
+          body: "",
+          hash: "def456",
+          tag: "fix",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  const note = createPackageReleaseNote(mockUpdate, new Date(0));
+  await assertSnapshot(t, note);
+});
+
+Deno.test("createPackageReleaseBranchName() format", async (t) => {
+  const branchName = createPackageReleaseBranchName("@scope/my-package", "1.2.3", new Date(0));
+  assertEquals(branchName, "release-scope-my-package-1.2.3-1970-01-01-00-00-00");
+
+  const branchNameSimple = createPackageReleaseBranchName("simple-package", "0.1.0", new Date(0));
+  assertEquals(branchNameSimple, "release-simple-package-0.1.0-1970-01-01-00-00-00");
+
+  await assertSnapshot(t, { branchName, branchNameSimple });
+});
+
+Deno.test("createPackagePrBody() format", async (t) => {
+  const mockUpdate = {
+    summary: {
+      module: "@scope/test-package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat(test-package): add new feature",
+          body: "",
+          hash: "abc123",
+          tag: "feat",
+        },
+        {
+          subject: "fix(test-package): fix critical bug",
+          body: "",
+          hash: "def456",
+          tag: "fix",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  const diagnostics = [
+    {
+      type: "unknown_commit" as const,
+      commit: {
+        subject: "some unknown commit",
+        body: "",
+        hash: "xyz789",
+      },
+      reason: "Unknown commit format",
+    },
+  ];
+
+  const prBody = createPackagePrBody(mockUpdate, diagnostics, "owner/repo", "release-branch");
+  await assertSnapshot(t, prBody);
+});
+
+Deno.test("createPerPackagePrBody() format", async (t) => {
+  const mockUpdates = [
+    {
+      summary: {
+        module: "@scope/package-a",
+        version: "minor" as const,
+        commits: [
+          {
+            subject: "feat(package-a): add feature A",
+            body: "",
+            hash: "abc123",
+            tag: "feat",
+          },
+        ],
+      },
+      from: "1.0.0",
+      to: "1.1.0",
+      diff: "minor" as const,
+      path: "/path/to/a/deno.json",
+    },
+    {
+      summary: {
+        module: "@scope/package-b",
+        version: "patch" as const,
+        commits: [
+          {
+            subject: "fix(package-b): fix bug B",
+            body: "",
+            hash: "def456",
+            tag: "fix",
+          },
+        ],
+      },
+      from: "2.0.0",
+      to: "2.0.1",
+      diff: "patch" as const,
+      path: "/path/to/b/deno.json",
+    },
+  ];
+
+  const diagnostics: Diagnostic[] = [];
+
+  const prBody = createPerPackagePrBody(mockUpdates, diagnostics, "owner/repo", "release-branch");
+  await assertSnapshot(t, prBody);
 });

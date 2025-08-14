@@ -35,3 +35,101 @@ snapshot[`bumpWorkspaces() 1`] = `
 - chore(qux): a chore
 "
 `;
+
+snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
+[
+  "Found [36m18[39m commits between [35mstart-tag-for-testing[39m and [35morigin/base-branch-for-testing[39m.",
+  "Updating the versions:",
+  "Found [36m5[39m diagnostics:",
+  "  unknown_commit experiment",
+  "  unknown_commit wip",
+  "  unknown_range_commit fix(unknown): a fix",
+  "  missing_range fix: a fix",
+  "  missing_range perf: a perf improvement",
+  "Publishing per-package mode with 5 packages",
+  "[36mDry run mode - showing what would be done:[39m",
+  "
+[36mPackage: @scope/bar[39m",
+  "Release note path: /tmp/test-dir/bar/CHANGELOG.md",
+  "Release note:",
+  "### bar 2.3.5 (2025.08.14)
+
+- fix(foo,bar,baz,qux,quux): a fix
+- chore(bar): a chore
+",
+  "Would create tag: @scope/bar@2.3.5",
+  "Would create individual PR for @scope/bar",
+  "
+[36mPackage: @scope/baz[39m",
+  "Release note path: /tmp/test-dir/baz/CHANGELOG.md",
+  "Release note:",
+  "### baz 0.2.4 (2025.08.14)
+
+- feat(baz): add a feature
+- fix(foo,bar,baz,qux,quux): a fix
+",
+  "Would create tag: @scope/baz@0.2.4",
+  "Would create individual PR for @scope/baz",
+  "
+[36mPackage: @scope/foo[39m",
+  "Release note path: /tmp/test-dir/foo/CHANGELOG.md",
+  "Release note:",
+  "### foo 2.0.0 (2025.08.14)
+
+- BREAKING(foo): a breaking change
+- deprecation(foo): a deprecation
+- fix(foo,bar,baz,qux,quux): a fix
+- docs(foo): add docs
+",
+  "Would create tag: @scope/foo@2.0.0",
+  "Would create individual PR for @scope/foo",
+  "
+[36mPackage: @scope/quux[39m",
+  "Release note path: /tmp/test-dir/quux/CHANGELOG.md",
+  "Release note:",
+  "### quux 0.1.0 (2025.08.14)
+
+- BREAKING(quux): a breaking change
+- fix(foo,bar,baz,qux,quux): a fix
+- style(qux,quux): style update
+- test(quux): add a test
+",
+  "Would create tag: @scope/quux@0.1.0",
+  "Would create individual PR for @scope/quux",
+  "
+[36mPackage: @scope/qux[39m",
+  "Release note path: /tmp/test-dir/qux/CHANGELOG.md",
+  "Release note:",
+  "### qux 0.3.5 (2025.08.14)
+
+- fix(foo,bar,baz,qux,quux): a fix
+- perf(qux): a perf improvement
+- style(qux,quux): style update
+- chore(qux): a chore
+",
+  "Would create tag: @scope/qux@0.3.5",
+  "Would create individual PR for @scope/qux",
+  "Done.",
+]
+`;
+
+snapshot[`bumpWorkspaces() per-package mode with git dry run 1`] = `
+{
+  content: "### foo 2.0.0 (YYYY.MM.DD)
+
+- BREAKING(foo): a breaking change
+- deprecation(foo): a deprecation
+- fix(foo,bar,baz,qux,quux): a fix
+- docs(foo): add docs
+
+### foo 2.0.0 (YYYY.MM.DD)
+
+- BREAKING(foo): a breaking change
+- deprecation(foo): a deprecation
+- fix(foo,bar,baz,qux,quux): a fix
+- docs(foo): add docs
+
+",
+  packageDir: "foo",
+}
+`;
