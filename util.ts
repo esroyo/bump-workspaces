@@ -1049,7 +1049,7 @@ async function restoreGitState(
       ? (cmd: string) => $`git -C ${options.workingDirectory!} ${cmd}`
       : (cmd: string) => $`git ${cmd}`;
 
-    const currentBranch = await gitCmd("branch --show-current").text();
+    const currentBranch = await getCurrentGitBranch();
 
     if (currentBranch.trim() !== state.branch) {
       if (!options.quiet) {
