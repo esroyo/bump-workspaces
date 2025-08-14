@@ -41,20 +41,25 @@ import { bumpWorkspaces } from "./mod.ts";
 if (import.meta.main) {
   const args = parseArgs(Deno.args, {
     string: [
+      "create-tags",
       "import-map",
-      "release-note-path",
+      "individual-prs",
+      "individual-tags",
+      "individual-release-notes",
+      "push-tags",
       "publish-mode",
+      "release-note-path",
+      "tag-prefix",
     ],
     boolean: [
       "dry-run",
-      "individual-prs",
-      "individual-tags",
-      "individual-release-notes",
     ],
     negatable: [
+      "create-tags",
       "individual-prs",
       "individual-tags",
       "individual-release-notes",
+      "push-tags",
     ],
   });
 
@@ -91,5 +96,8 @@ if (import.meta.main) {
     individualTags: args["individual-tags"] ?? isPerPackageMode,
     individualReleaseNotes: args["individual-release-notes"] ??
       isPerPackageMode,
+    createTags: args["create-tags"] ?? true, // Default to true
+    tagPrefix: args["tag-prefix"] ?? "v", // Default to "v"
+    pushTags: args["push-tags"] ?? true, // Default to true
   });
 }

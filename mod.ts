@@ -39,6 +39,7 @@ import {
   getCurrentGitBranch,
   getModule,
   getPackageDir,
+  getSmartStartTag,
   getWorkspaceModules,
   getWorkspaceModulesWithOptions,
   pathProp,
@@ -90,6 +91,12 @@ export type BumpWorkspaceOptions = {
   individualReleaseNotes?: boolean;
   /** Internal option: suppress additional logging (used for testing) */
   _quiet?: boolean;
+  /** Whether to create git tags automatically after the version update commit. Default: true */
+  createTags?: boolean;
+  /** Tag prefix for single packages. Default: "v" (results in tags like v1.2.3) */
+  tagPrefix?: string;
+  /** Whether to push tags immediately with the branch. Default: true */
+  pushTags?: boolean;
 };
 
 /**
@@ -112,12 +119,15 @@ export async function bumpWorkspaces(
     individualPRs = false,
     individualTags = publishMode === "per-package" ? true : false, // Dynamic default
     individualReleaseNotes = publishMode === "per-package" ? true : false, // Dynamic default
+    createTags = true,
+    tagPrefix = "v",
+    pushTags = true,
     _quiet = false,
   }: BumpWorkspaceOptions = {},
 ): Promise<void> {
   return withGitContext(async () => {
     const now = new Date();
-    start ??= await $`git describe --tags --abbrev=0`.text();
+
     base ??= await getCurrentGitBranch();
     if (!base || base === "unknown") {
       console.error("The current branch is not found.");
@@ -136,16 +146,15 @@ export async function bumpWorkspaces(
       ? (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true })
       : getWorkspaceModules;
 
-    await $`git checkout ${start}`;
-    const [_oldConfigPath, oldModules] = await getModules(root);
-    await $`git checkout -`;
-    await $`git checkout ${base}`;
     const [configPath, modules] = await getModules(root);
-    await $`git checkout -`;
 
     // Determine if this is a single-package repo
     const isSinglePackage = modules.length === 1 &&
       modules[0][pathProp] === configPath;
+
+    if (!start) {
+      start = await getSmartStartTag(publishMode, modules, tagPrefix, _quiet);
+    }
 
     // Only log package type info when not in quiet mode
     if (!_quiet) {
@@ -164,6 +173,12 @@ export async function bumpWorkspaces(
         );
       }
     }
+
+    await $`git checkout ${start}`;
+    const [_oldConfigPath, oldModules] = await getModules(root);
+    await $`git checkout -`;
+    await $`git checkout ${base}`;
+    await $`git checkout -`;
 
     const newBranchName = createReleaseBranchName(now);
     const workspaceReleaseNotePath = join(root, releaseNotePath);
@@ -275,6 +290,9 @@ export async function bumpWorkspaces(
         individualPRs,
         individualTags,
         individualReleaseNotes,
+        createTags,
+        tagPrefix,
+        pushTags,
       });
     } else {
       // Use workspace mode for single-package repos or when explicitly requested
@@ -297,6 +315,9 @@ export async function bumpWorkspaces(
         githubToken,
         githubRepo,
         base,
+        createTags,
+        tagPrefix,
+        pushTags,
       });
     }
 
@@ -319,6 +340,9 @@ async function publishWorkspace({
   githubToken,
   githubRepo,
   base,
+  createTags,
+  pushTags,
+  tagPrefix,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -334,6 +358,9 @@ async function publishWorkspace({
   githubToken?: string;
   githubRepo?: string;
   base: string;
+  createTags?: boolean;
+  tagPrefix?: string;
+  pushTags?: boolean;
 }) {
   const releaseNote = createReleaseNote(updates, modules, now);
 
@@ -341,6 +368,24 @@ async function publishWorkspace({
     console.log();
     console.log(cyan("The release note:"));
     console.log(releaseNote);
+
+    if (createTags) {
+      console.log();
+      console.log(cyan("Tags that would be created:"));
+      for (const update of updates) {
+        const module = getModule(update.summary.module, modules)!;
+        const isSinglePackage = modules.length === 1 &&
+          modules[0][pathProp].endsWith("deno.json");
+
+        if (isSinglePackage) {
+          console.log(`${tagPrefix}${update.to}`);
+        } else {
+          console.log(`${module.name}@${update.to}`);
+        }
+      }
+    }
+
+    console.log();
     console.log(cyan("Skip making a commit."));
     console.log(cyan("Skip making a pull request."));
   } else {
@@ -386,8 +431,47 @@ async function publishWorkspace({
       await $`git add .`;
       await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: update versions"`;
 
+      if (createTags) {
+        console.log("Creating version tags...");
+        const isSinglePackage = modules.length === 1 &&
+          modules[0][pathProp].endsWith("deno.json");
+
+        for (const update of updates) {
+          const module = getModule(update.summary.module, modules)!;
+          let tagName: string;
+
+          if (isSinglePackage) {
+            // Single package: use v1.2.3 format
+            tagName = `${tagPrefix}${update.to}`;
+          } else {
+            // Workspace: use @scope/package@1.2.3 format
+            tagName = `${module.name}@${update.to}`;
+          }
+
+          try {
+            // Check if tag already exists
+            await $`git rev-parse ${tagName}`.quiet();
+            console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+          } catch {
+            // Tag doesn't exist, create it
+            await $`git tag ${tagName}`;
+            console.log(`Created tag: ${cyan(tagName)}`);
+          }
+        }
+      }
+
       console.log(`Pushing the new branch ${magenta(newBranchName)}.`);
-      await $`git push origin ${newBranchName}`;
+      if (createTags && pushTags) {
+        // Push branch and tags together
+        await $`git push origin ${newBranchName} --tags`;
+        console.log("Tags pushed along with branch");
+      } else {
+        // Just push the branch
+        await $`git push origin ${newBranchName}`;
+        if (createTags) {
+          console.log("Tags created locally (use --push-tags to push them)");
+        }
+      }
 
       // Makes a PR
       console.log(`Creating a pull request.`);
@@ -433,6 +517,9 @@ async function publishPerPackage({
   individualPRs,
   individualTags,
   individualReleaseNotes,
+  createTags,
+  pushTags,
+  tagPrefix,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -451,6 +538,9 @@ async function publishPerPackage({
   individualPRs: boolean;
   individualTags: boolean;
   individualReleaseNotes: boolean;
+  createTags?: boolean;
+  tagPrefix?: string;
+  pushTags?: boolean;
 }) {
   console.log(`Publishing per-package mode with ${updates.length} packages`);
 
@@ -469,7 +559,7 @@ async function publishPerPackage({
         console.log(packageReleaseNote);
       }
 
-      if (individualTags) {
+      if (individualTags || createTags) {
         const tagName = `${module.name}@${update.to}`;
         console.log(`Would create tag: ${tagName}`);
       }
@@ -530,6 +620,9 @@ async function publishPerPackage({
       releaseNotePath,
       root,
       dryRun,
+      createTags,
+      tagPrefix,
+      pushTags,
     });
   } else {
     // Create single PR but with per-package organization
@@ -547,6 +640,9 @@ async function publishPerPackage({
       releaseNotePath,
       root,
       dryRun,
+      createTags,
+      tagPrefix,
+      pushTags,
     });
   }
 

@@ -657,6 +657,8 @@ export async function createIndividualPRs({
   releaseNotePath,
   root,
   dryRun,
+  createTags,
+  pushTags,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -670,6 +672,9 @@ export async function createIndividualPRs({
   releaseNotePath: string;
   root: string;
   dryRun: boolean | "git";
+  createTags?: boolean;
+  tagPrefix?: string;
+  pushTags?: boolean;
 }) {
   if (dryRun === "git") {
     console.log(cyan("Git dry run mode - skipping individual PR creation"));
@@ -720,7 +725,28 @@ export async function createIndividualPRs({
 
     await $`git add .`;
     await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore(${module.name}): release ${update.to}"`;
-    await $`git push origin ${branchName}`;
+
+    if (createTags) {
+      const tagName = `${module.name}@${update.to}`;
+
+      try {
+        await $`git rev-parse ${tagName}`.quiet();
+        console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+      } catch {
+        await $`git tag ${tagName}`;
+        console.log(`Created tag: ${cyan(tagName)}`);
+      }
+    }
+
+    if (createTags && pushTags) {
+      await $`git push origin ${branchName} --tags`;
+      console.log(`Tag pushed with ${module.name} branch`);
+    } else {
+      await $`git push origin ${branchName}`;
+      if (createTags) {
+        console.log(`Tag created locally for ${module.name}`);
+      }
+    }
 
     // Create PR for this package
     const packageDiagnostics = diagnostics.filter((d) =>
@@ -768,6 +794,8 @@ export async function createSinglePRWithPackageBreakdown({
   releaseNotePath,
   root,
   dryRun,
+  createTags,
+  pushTags,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -782,6 +810,9 @@ export async function createSinglePRWithPackageBreakdown({
   releaseNotePath: string;
   root: string;
   dryRun: boolean | "git";
+  createTags?: boolean;
+  tagPrefix?: string;
+  pushTags?: boolean;
 }) {
   // Create individual release notes in package directories
   if (individualReleaseNotes) {
@@ -835,7 +866,33 @@ export async function createSinglePRWithPackageBreakdown({
   await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: release packages ${
     createReleaseTitle(now)
   }"`;
-  await $`git push origin ${branchName}`;
+
+  if (createTags) {
+    console.log("Creating per-package tags...");
+
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      const tagName = `${module.name}@${update.to}`;
+
+      try {
+        await $`git rev-parse ${tagName}`.quiet();
+        console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+      } catch {
+        await $`git tag ${tagName}`;
+        console.log(`Created tag: ${cyan(tagName)}`);
+      }
+    }
+  }
+
+  if (createTags && pushTags) {
+    await $`git push origin ${branchName} --tags`;
+    console.log("Per-package tags pushed along with branch");
+  } else {
+    await $`git push origin ${branchName}`;
+    if (createTags) {
+      console.log("Per-package tags created locally");
+    }
+  }
 
   // Create PR
   const openedPr = await octoKit.request(
@@ -1192,5 +1249,105 @@ export async function getCurrentGitBranch(): Promise<string> {
   } catch {
     // Final fallback
     return "unknown";
+  }
+}
+
+export async function getSmartStartTag(
+  publishMode: "workspace" | "per-package",
+  modules: WorkspaceModule[],
+  tagPrefix: string,
+  quiet: boolean = false,
+): Promise<string> {
+  const isSinglePackage = modules.length === 1 &&
+    modules[0][pathProp].endsWith("deno.json");
+
+  try {
+    if (publishMode === "per-package" && !isSinglePackage) {
+      // Per-package workspace: find most recent tag across all packages
+      if (!quiet) {
+        console.log("Detecting per-package workspace tags...");
+      }
+
+      const packageTags: Array<{ tag: string; date: Date; package: string }> =
+        [];
+
+      for (const module of modules) {
+        try {
+          // Look for tags matching this specific package pattern
+          const packagePattern = `${module.name}@*`;
+          const packageTag =
+            await $`git describe --tags --abbrev=0 --match=${packagePattern}`
+              .text();
+
+          if (packageTag.trim()) {
+            // Get the tag date for sorting
+            const tagDate =
+              await $`git log -1 --format=%ai ${packageTag.trim()}`.text();
+            packageTags.push({
+              tag: packageTag.trim(),
+              date: new Date(tagDate.trim()),
+              package: module.name,
+            });
+
+            if (!quiet) {
+              console.log(`Found ${module.name}: ${packageTag.trim()}`);
+            }
+          }
+        } catch {
+          // No tags found for this package, skip
+          if (!quiet) {
+            console.log(`No tags found for ${module.name}`);
+          }
+        }
+      }
+
+      if (packageTags.length > 0) {
+        // Return the most recent tag across all packages
+        packageTags.sort((a, b) => b.date.getTime() - a.date.getTime());
+        const mostRecentTag = packageTags[0].tag;
+
+        if (!quiet) {
+          console.log(`Using most recent tag: ${mostRecentTag}`);
+        }
+
+        return mostRecentTag;
+      }
+    } else if (isSinglePackage) {
+      // Single package: look for version tags with specified prefix
+      try {
+        const versionPattern = `${tagPrefix}*`;
+        const latestTag =
+          await $`git describe --tags --abbrev=0 --match=${versionPattern}`
+            .text();
+
+        if (!quiet) {
+          console.log(`Found single-package tag: ${latestTag.trim()}`);
+        }
+
+        return latestTag.trim();
+      } catch {
+        if (!quiet) {
+          console.log(`No ${tagPrefix}* tags found, trying fallback...`);
+        }
+      }
+    }
+
+    // Fallback to original behavior
+    const fallbackTag = await $`git describe --tags --abbrev=0`.text();
+    if (!quiet) {
+      console.log(`Using fallback tag: ${fallbackTag.trim()}`);
+    }
+    return fallbackTag.trim();
+  } catch {
+    // No tags at all
+    if (!quiet) {
+      console.log("No tags found, analyzing all history");
+    }
+    try {
+      const firstCommit = await $`git rev-list --max-parents=0 HEAD`.text();
+      return firstCommit.trim().split("\n")[0];
+    } catch {
+      return "";
+    }
   }
 }
