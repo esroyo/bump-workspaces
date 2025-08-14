@@ -25,5 +25,19 @@
     "rules": {
       "exclude": ["require-await"]
     }
+  },
+  "publish": {
+    "exclude": [
+      "**/*_test.ts",
+      "**/*.test.ts",
+      "**/test_*.ts",
+      "**/*.snap",
+      ".github/",
+      "coverage/",
+      "testdata/",
+      "*.lcov",
+      "coverage.lcov",
+      ".*"
+    ]
   }
 }
