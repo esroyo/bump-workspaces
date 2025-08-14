@@ -1,7 +1,12 @@
 name: publish
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - "packages/*/CHANGELOG.md"
+      - "packages/*/Releases.md"
+      - "Releases.md"
+      - "CHANGELOG.md"
 jobs:
   publish:
     runs-on: ubuntu-latest

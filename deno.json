@@ -8,7 +8,8 @@
   "version": "0.2.3",
   "tasks": {
     "test": "deno test -A --parallel",
-    "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov"
+    "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov",
+    "release": "git tag release && git push origin release && git tag -d release"
   },
   "imports": {
     "@david/dax": "jsr:@david/dax@^0.40.1",
