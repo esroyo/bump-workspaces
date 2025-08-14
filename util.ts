@@ -518,17 +518,28 @@ export async function applyVersionBump(
   module.version = newVersionStr;
   const path = module[pathProp];
   if (!dryRun) {
-    await Deno.writeTextFile(path, JSON.stringify(module, null, 2) + "\n");
+    // Write the updated module to its deno.json file
+    const moduleJson = JSON.stringify(module, null, 2) + "\n";
+    await Deno.writeTextFile(path, moduleJson);
+    console.log(`Updated ${path} with version ${module.version}`);
   }
+
+  // Update the import map content (for workspace packages)
+  // For single packages, this might be the same content, but we still need to update it
   denoJson = denoJson.replace(
     new RegExp(`${module.name}@([^~]?)${currentVersionStr}`, "g"),
     `${module.name}@$1${newVersionStr}`,
   );
-  if (path.endsWith("deno.jsonc")) {
-    console.warn(
-      `Currently this tool doesn't keep the comments in deno.jsonc files. Comments in the path "${path}" might be removed by this update.`,
+
+  // For single packages, also update the version field in the JSON content
+  if (denoJson.includes(`"version": "${currentVersionStr}"`)) {
+    denoJson = denoJson.replace(
+      `"version": "${currentVersionStr}"`,
+      `"version": "${newVersionStr}"`
     );
+    console.log(`Updated version field in import map content`);
   }
+
   return [denoJson, {
     from: currentVersionStr,
     to: newVersionStr,
