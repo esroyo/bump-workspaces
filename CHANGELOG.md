@@ -1,5 +1,12 @@
 ### 2025.08.14
 
+#### @esroyo/deno-bump-workspaces 0.2.3 (patch)
+
+- fix: linting errors on cli
+- docs: add info about tagging and merge strategies
+
+### 2025.08.14
+
 #### @esroyo/deno-bump-workspaces 0.2.2 (patch)
 
 - feat: add tagging to the bump/release process
