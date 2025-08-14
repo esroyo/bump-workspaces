@@ -249,6 +249,213 @@ Deno.test("defaultParseCommitMessage()", () => {
   );
 });
 
+Deno.test("defaultParseCommitMessage() handles scopeless commits in single-package repos", () => {
+  // Single package repo
+  const singlePackageModules: WorkspaceModule[] = [
+    {
+      name: "@test/single-package",
+      version: "1.0.0",
+      [pathProp]: "/path/to/deno.json",
+    },
+  ];
+
+  // Multi-package repo for comparison
+  const multiPackageModules: WorkspaceModule[] = [
+    {
+      name: "@test/package-a",
+      version: "1.0.0",
+      [pathProp]: "/path/to/a/deno.json",
+    },
+    {
+      name: "@test/package-b",
+      version: "1.0.0",
+      [pathProp]: "/path/to/b/deno.json",
+    },
+  ];
+
+  const hash = "0000000000000000000000000000000000000000";
+
+  // Test scopeless commits in single-package repo - should work
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "feat: add new feature", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "feat",
+        version: "minor",
+        commit: {
+          subject: "feat: add new feature",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "fix: resolve critical bug", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "fix",
+        version: "patch",
+        commit: {
+          subject: "fix: resolve critical bug",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "BREAKING: remove deprecated API", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "BREAKING",
+        version: "major",
+        commit: {
+          subject: "BREAKING: remove deprecated API",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  // Test with breaking change marker (with scope - current regex requires this)
+  assertEquals(
+    defaultParseCommitMessage(
+      {
+        subject: "feat(@test/single-package)!: add breaking feature",
+        body: "",
+        hash,
+      },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "feat",
+        version: "major",
+        commit: {
+          subject: "feat(@test/single-package)!: add breaking feature",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  // Support feat!: syntax
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "feat!: add breaking feature", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "feat",
+        version: "major",
+        commit: {
+          subject: "feat!: add breaking feature",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  // Test scopeless commits that don't require range (should work in single-package)
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "chore: update dependencies", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "@test/single-package",
+        tag: "chore",
+        version: "patch",
+        commit: {
+          subject: "chore: update dependencies",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+
+  // Test that multi-package repos still require scopes for required tags
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "feat: add new feature", body: "", hash },
+      multiPackageModules,
+    ),
+    {
+      type: "missing_range",
+      commit: { subject: "feat: add new feature", body: "", hash },
+      reason: "The commit message does not specify a module.",
+    },
+  );
+
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "fix: resolve critical bug", body: "", hash },
+      multiPackageModules,
+    ),
+    {
+      type: "missing_range",
+      commit: { subject: "fix: resolve critical bug", body: "", hash },
+      reason: "The commit message does not specify a module.",
+    },
+  );
+
+  // Test that non-required tags are still skipped in multi-package repos
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "chore: update dependencies", body: "", hash },
+      multiPackageModules,
+    ),
+    {
+      type: "skipped_commit",
+      commit: { subject: "chore: update dependencies", body: "", hash },
+      reason: "The commit message does not specify a module.",
+    },
+  );
+
+  // Test that scoped commits still work in single-package repos
+  assertEquals(
+    defaultParseCommitMessage(
+      { subject: "feat(api): add new endpoint", body: "", hash },
+      singlePackageModules,
+    ),
+    [
+      {
+        module: "api",
+        tag: "feat",
+        version: "minor",
+        commit: {
+          subject: "feat(api): add new endpoint",
+          body: "",
+          hash,
+        },
+      },
+    ],
+  );
+});
+
 Deno.test("checkModuleName()", () => {
   assertEquals(
     checkModuleName({ module: "foo", tag: "chore", commit: emptyCommit }, [

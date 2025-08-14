@@ -118,7 +118,7 @@ interface GetWorkspaceModulesOptions {
   quiet?: boolean;
 }
 
-const RE_DEFAULT_PATTERN = /^([^:()]+)(?:\((.+)\))?(\!)?: (.*)$/;
+const RE_DEFAULT_PATTERN = /^([^:()!]+)(?:\((.+)\))?(\!)?: (.*)$/;
 const REGEXP_UNSTABLE_SCOPE = /^(unstable\/(.+)|(.+)\/unstable)$/;
 
 type VersionBumpKind = "major" | "minor" | "patch";
@@ -169,25 +169,42 @@ export function defaultParseCommitMessage(
     };
   }
   const [, tag, module, optionalPostModule, _message] = match;
-  const modules = module === "*"
-    ? workspaceModules.map((x) => x.name)
-    : module
-    ? module.split(/\s*,\s*/)
-    : [];
+
+  // Determine which modules this commit applies to
+  let modules: string[];
+  if (module === "*") {
+    // Wildcard scope - applies to all modules
+    modules = workspaceModules.map((x) => x.name);
+  } else if (module) {
+    // Explicit scope(s) provided
+    modules = module.split(/\s*,\s*/);
+  } else {
+    // No scope provided
+    modules = [];
+  }
+
+  // Handle the case where no modules are specified
   if (modules.length === 0) {
-    if (DEFAULT_RANGE_REQUIRED.includes(tag)) {
+    // For single-package repos, apply scopeless commits to the single package
+    if (workspaceModules.length === 1) {
+      modules = [workspaceModules[0].name];
+    } else {
+      // Multi-package repo with no scope
+      if (DEFAULT_RANGE_REQUIRED.includes(tag)) {
+        return {
+          type: "missing_range",
+          commit,
+          reason: "The commit message does not specify a module.",
+        };
+      }
       return {
-        type: "missing_range",
+        type: "skipped_commit",
         commit,
         reason: "The commit message does not specify a module.",
       };
     }
-    return {
-      type: "skipped_commit",
-      commit,
-      reason: "The commit message does not specify a module.",
-    };
   }
+
   const version = optionalPostModule in POST_MODULE_TO_VERSION
     ? POST_MODULE_TO_VERSION[optionalPostModule]
     : TAG_TO_VERSION[tag];
@@ -198,6 +215,7 @@ export function defaultParseCommitMessage(
       reason: `Unknown commit tag: ${tag}.`,
     };
   }
+
   return modules.map((module) => {
     const matchUnstable = REGEXP_UNSTABLE_SCOPE.exec(module);
     if (matchUnstable) {
