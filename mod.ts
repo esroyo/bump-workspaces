@@ -70,7 +70,7 @@ export type BumpWorkspaceOptions = {
   dryRun?: boolean | "git";
   /** The import map path. Default is deno.json(c) at the root. */
   importMap?: string;
-  /** The path to release note markdown file. The dfault is `Releases.md` */
+  /** The path to release note markdown file. The default is `Releases.md` */
   releaseNotePath?: string;
 };
 

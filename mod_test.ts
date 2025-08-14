@@ -19,9 +19,10 @@ Deno.test("bumpWorkspaces()", async (t) => {
     base: "origin/base-branch-for-testing",
     start: "start-tag-for-testing",
     root: dir,
+    releaseNotePath: "CHANGELOG.md",
   });
 
-  const releaseNote = await Deno.readTextFile(join(dir, "Releases.md"));
+  const releaseNote = await Deno.readTextFile(join(dir, "CHANGELOG.md"));
   await assertSnapshot(
     t,
     releaseNote.replace(/^### \d+\.\d+\.\d+/, "### YYYY.MM.DD"),

@@ -27,11 +27,12 @@ import { bumpWorkspaces } from "./mod.ts";
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args, {
-    string: ["import-map"],
+    string: ["import-map", "release-note-path"],
     boolean: ["dry-run"],
   });
   await bumpWorkspaces({
     dryRun: args["dry-run"],
     importMap: args["import-map"],
+    releaseNotePath: args["release-note-path"],
   });
 }
