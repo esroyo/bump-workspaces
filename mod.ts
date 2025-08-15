@@ -44,6 +44,7 @@ import {
   getWorkspaceModulesWithOptions,
   pathProp,
   summarizeVersionBumpsByModule,
+  tryGetDenoConfig,
   type VersionBump,
   type VersionUpdateResult,
   withGitContext,
@@ -146,6 +147,7 @@ export async function bumpWorkspaces(
       ? (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true })
       : getWorkspaceModules;
 
+    // Get current modules first to determine repository type
     const [configPath, modules] = await getModules(root);
 
     // Determine if this is a single-package repo
@@ -174,9 +176,72 @@ export async function bumpWorkspaces(
       }
     }
 
-    await $`git checkout ${start}`;
-    const [_oldConfigPath, oldModules] = await getModules(root);
-    await $`git checkout -`;
+    // For historical comparison, use a safe approach
+    let oldModules: WorkspaceModule[];
+
+    if (isSinglePackage) {
+      // For single-package repos, try to get historical version safely
+      try {
+        await $`git checkout ${start}`;
+
+        // Try to read the historical deno.json
+        const [historicalConfigPath, historicalConfig] = await tryGetDenoConfig(
+          root,
+        );
+
+        if (historicalConfig.name && historicalConfig.version) {
+          // Historical config is valid single-package
+          oldModules = [{
+            ...historicalConfig,
+            [pathProp]: historicalConfigPath,
+          }];
+        } else {
+          // Historical config is incomplete - use current structure with historical version
+          // Try to extract version from git tags or use 0.0.0
+          let historicalVersion = "0.0.0";
+          try {
+            const tagOutput = await $`git describe --tags --abbrev=0`.text()
+              .catch(() => "");
+            if (tagOutput.trim()) {
+              const versionMatch = tagOutput.match(/v?(\d+\.\d+\.\d+)/);
+              if (versionMatch) {
+                historicalVersion = versionMatch[1];
+              }
+            }
+          } catch {
+            // Use default 0.0.0
+          }
+
+          oldModules = [{
+            name: modules[0].name, // Use current name
+            version: historicalVersion,
+            [pathProp]: configPath,
+          }];
+        }
+
+        await $`git checkout -`;
+      } catch {
+        if (!_quiet) {
+          console.warn(
+            `Could not read historical config at ${start}, using fallback`,
+          );
+        }
+        // Fallback: create old module with 0.0.0 version
+        oldModules = [{
+          name: modules[0].name,
+          version: "0.0.0",
+          [pathProp]: configPath,
+        }];
+        await $`git checkout -`;
+      }
+    } else {
+      // For workspace repos, use the original logic
+      await $`git checkout ${start}`;
+      const [_oldConfigPath, oldModulesResult] = await getModules(root);
+      oldModules = oldModulesResult;
+      await $`git checkout -`;
+    }
+
     await $`git checkout ${base}`;
     await $`git checkout -`;
 
