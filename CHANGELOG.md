@@ -2,6 +2,14 @@
 
 #### @esroyo/deno-bump-workspaces 0.2.4 (patch)
 
+- fix: better resiliency on single-package config read
+- fix: enable dry-run for git tag creation
+- chore: update versions
+
+### 2025.08.15
+
+#### @esroyo/deno-bump-workspaces 0.2.4 (patch)
+
 - fix: enable dry-run for git tag creation
 
 ### 2025.08.14
