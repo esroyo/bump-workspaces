@@ -1,5 +1,11 @@
 ### 2025.08.15
 
+#### @esroyo/deno-bump-workspaces 0.2.6 (patch)
+
+- docs: add tag options info
+
+### 2025.08.15
+
 #### @esroyo/deno-bump-workspaces 0.2.5 (patch)
 
 - fix: better resiliency on single-package config read
