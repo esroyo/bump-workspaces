@@ -6,11 +6,13 @@ import {
   assertExists,
   assertObjectMatch,
 } from "@std/assert";
+import { assertSpyCallArg, spy, stub } from "@std/testing/mock";
 import { assertSnapshot } from "@std/testing/snapshot";
 import denoJson from "./deno.json" with { type: "json" };
 import { join } from "@std/path";
 import {
   applyVersionBump,
+  calcVersionDiff,
   checkModuleName,
   ConfigurationError,
   createPackagePrBody,
@@ -25,12 +27,14 @@ import {
   type Diagnostic,
   getModule,
   getPackageDir,
+  getSmartStartTag,
   getWorkspaceModules,
   getWorkspaceModulesForTesting,
   maxVersion,
   pathProp,
   summarizeVersionBumpsByModule,
   type VersionBump,
+  withGitContextForTesting,
   type WorkspaceModule,
 } from "./util.ts";
 import { tryGetDenoConfig } from "./util.ts";
@@ -953,6 +957,31 @@ Deno.test("tryGetDenoConfig()", async () => {
   assertEquals(config.name, denoJson.name);
 });
 
+Deno.test("tryGetDenoConfig() error handling", async () => {
+  const tempDir = await Deno.makeTempDir();
+
+  const exitSpy = stub(Deno, "exit", function () {} as typeof Deno.exit);
+
+  try {
+    // Test with invalid JSON to trigger parse error
+    await Deno.writeTextFile(
+      join(tempDir, "deno.json"),
+      "{ invalid json content",
+    );
+
+    try {
+      await tryGetDenoConfig(tempDir);
+      assert(false, "Should have thrown due to invalid JSON");
+    } catch {
+      // Expected - invalid JSON should cause exit
+      assertSpyCallArg(exitSpy, 0, 0, 1);
+    }
+  } finally {
+    exitSpy.restore();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 Deno.test("getWorkspaceModules()", async (t) => {
   const [_, modules] = await getWorkspaceModules("testdata/basic");
   assertEquals(modules.length, 5);
@@ -974,6 +1003,19 @@ Deno.test("getModule", async () => {
     name: "@scope/foo",
     version: "1.2.3",
   });
+});
+
+Deno.test("calcVersionDiff() error handling", () => {
+  // This should trigger the "Unexpected manual version update" error
+  try {
+    calcVersionDiff("1.0.0", "1.0.0"); // Same version should throw
+    assert(false, "Should have thrown an error");
+  } catch (error) {
+    assert(
+      Error.isError(error) &&
+        error.message.includes("Unexpected manual version update"),
+    );
+  }
 });
 
 Deno.test("applyVersionBump() updates the version of the given module", async () => {
@@ -1462,6 +1504,27 @@ Deno.test("getWorkspaceModules() fails gracefully for invalid single-package rep
   }
 });
 
+Deno.test("ConfigurationError handling in getWorkspaceModules", async () => {
+  const tempDir = await Deno.makeTempDir();
+
+  try {
+    // Create invalid workspace config
+    await Deno.writeTextFile(
+      join(tempDir, "deno.json"),
+      JSON.stringify({ workspace: "invalid" }), // Should be array
+    );
+
+    try {
+      await getWorkspaceModulesForTesting(tempDir);
+      assert(false, "Should have thrown ConfigurationError");
+    } catch (error) {
+      assert(error instanceof ConfigurationError);
+    }
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 Deno.test("getPackageDir() works correctly for single-package repos", async () => {
   const root = "/tmp/test-project";
   const module: WorkspaceModule = {
@@ -1484,4 +1547,54 @@ Deno.test("getPackageDir() works correctly for relative single-package paths", a
 
   const packageDir = getPackageDir(module, root);
   assertEquals(packageDir, "./test-project");
+});
+
+Deno.test("getSmartStartTag() with different modes", async () => {
+  await withGitContextForTesting(async () => {
+    const [_, modules] = await getWorkspaceModules("testdata/basic");
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      // Test per-package mode with logging enabled
+      const perPackageTag = await getSmartStartTag(
+        "per-package",
+        modules,
+        "v",
+        false, // Enable logging to verify behavior
+      );
+      assert(typeof perPackageTag === "string");
+      assertEquals(
+        perPackageTag.length > 0,
+        true,
+        "Should return a non-empty tag",
+      );
+
+      // Test workspace mode
+      const workspaceTag = await getSmartStartTag(
+        "workspace",
+        modules,
+        "v",
+        false, // Enable logging
+      );
+      assert(typeof workspaceTag === "string");
+      assertEquals(
+        workspaceTag.length > 0,
+        true,
+        "Should return a non-empty tag",
+      );
+
+      // Verify function logged its detection process
+      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
+      const hasDetectionLog = logCalls.some((log) =>
+        log.includes("Detecting") ||
+        log.includes("Found") ||
+        log.includes("Using") ||
+        log.includes("No tags found")
+      );
+      assertEquals(hasDetectionLog, true, "Should log tag detection process");
+    } finally {
+      consoleSpy.restore();
+    }
+  });
 });

@@ -20,7 +20,7 @@
     "@std/jsonc": "jsr:@std/jsonc@^0.224.0",
     "@std/path": "jsr:@std/path@^0.224.0",
     "@std/semver": "jsr:@std/semver@^0.224.0",
-    "@std/testing": "jsr:@std/testing@^0.224.0"
+    "@std/testing": "jsr:@std/testing@^1.0.0"
   },
   "lint": {
     "rules": {

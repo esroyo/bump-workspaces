@@ -52,7 +52,7 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
 [36mPackage: @scope/bar[39m",
   "Release note path: /tmp/test-dir/bar/CHANGELOG.md",
   "Release note:",
-  "### bar 2.3.5 (2025.08.14)
+  "### bar 2.3.5 (YYYY.MM.DD)
 
 - fix(foo,bar,baz,qux,quux): a fix
 - chore(bar): a chore
@@ -63,7 +63,7 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
 [36mPackage: @scope/baz[39m",
   "Release note path: /tmp/test-dir/baz/CHANGELOG.md",
   "Release note:",
-  "### baz 0.2.4 (2025.08.14)
+  "### baz 0.2.4 (YYYY.MM.DD)
 
 - feat(baz): add a feature
 - fix(foo,bar,baz,qux,quux): a fix
@@ -74,7 +74,7 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
 [36mPackage: @scope/foo[39m",
   "Release note path: /tmp/test-dir/foo/CHANGELOG.md",
   "Release note:",
-  "### foo 2.0.0 (2025.08.14)
+  "### foo 2.0.0 (YYYY.MM.DD)
 
 - BREAKING(foo): a breaking change
 - deprecation(foo): a deprecation
@@ -87,7 +87,7 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
 [36mPackage: @scope/quux[39m",
   "Release note path: /tmp/test-dir/quux/CHANGELOG.md",
   "Release note:",
-  "### quux 0.1.0 (2025.08.14)
+  "### quux 0.1.0 (YYYY.MM.DD)
 
 - BREAKING(quux): a breaking change
 - fix(foo,bar,baz,qux,quux): a fix
@@ -100,7 +100,7 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
 [36mPackage: @scope/qux[39m",
   "Release note path: /tmp/test-dir/qux/CHANGELOG.md",
   "Release note:",
-  "### qux 0.3.5 (2025.08.14)
+  "### qux 0.3.5 (YYYY.MM.DD)
 
 - fix(foo,bar,baz,qux,quux): a fix
 - perf(qux): a perf improvement

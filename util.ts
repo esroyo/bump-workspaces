@@ -729,12 +729,16 @@ export async function createIndividualPRs({
     if (createTags) {
       const tagName = `${module.name}@${update.to}`;
 
-      try {
-        await $`git rev-parse ${tagName}`.quiet();
-        console.log(`Tag ${cyan(tagName)} already exists, skipping`);
-      } catch {
-        await $`git tag ${tagName}`;
-        console.log(`Created tag: ${cyan(tagName)}`);
+      if (dryRun) {
+        console.log(`Would create tag: ${cyan(tagName)}`);
+      } else {
+        try {
+          await $`git rev-parse ${tagName}`.quiet();
+          console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+        } catch {
+          await $`git tag ${tagName}`;
+          console.log(`Created tag: ${cyan(tagName)}`);
+        }
       }
     }
 
@@ -868,18 +872,21 @@ export async function createSinglePRWithPackageBreakdown({
   }"`;
 
   if (createTags) {
-    console.log("Creating per-package tags...");
+    console.log(`${dryRun ? "Would create" : "Creating"} per-package tags...`);
 
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
       const tagName = `${module.name}@${update.to}`;
-
-      try {
-        await $`git rev-parse ${tagName}`.quiet();
-        console.log(`Tag ${cyan(tagName)} already exists, skipping`);
-      } catch {
-        await $`git tag ${tagName}`;
-        console.log(`Created tag: ${cyan(tagName)}`);
+      if (dryRun) {
+        console.log(`Would create tag: ${cyan(tagName)}`);
+      } else {
+        try {
+          await $`git rev-parse ${tagName}`.quiet();
+          console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+        } catch {
+          await $`git tag ${tagName}`;
+          console.log(`Created tag: ${cyan(tagName)}`);
+        }
       }
     }
   }
@@ -921,7 +928,18 @@ export async function createIndividualTags(
   modules: WorkspaceModule[],
   _gitUserName: string,
   _gitUserEmail: string,
+  dryRun: boolean | "git" = false, // Add dryRun parameter
 ) {
+  if (dryRun === "git") {
+    console.log(cyan("Git dry run mode - skipping individual tag creation"));
+    for (const update of updates) {
+      const module = getModule(update.summary.module, modules)!;
+      const tagName = `${module.name}@${update.to}`;
+      console.log(`Would create tag: ${cyan(tagName)}`);
+    }
+    return;
+  }
+
   console.log("Creating individual tags for each package");
 
   for (const update of updates) {
@@ -929,9 +947,16 @@ export async function createIndividualTags(
     const tagName = `${module.name}@${update.to}`;
     const tagMessage = `Release ${module.name} ${update.to}`;
 
-    console.log(`Creating tag: ${cyan(tagName)}`);
-    await $`git tag -a ${tagName} -m ${tagMessage}`;
-    await $`git push origin ${tagName}`;
+    if (dryRun === true) {
+      console.log(
+        `Would create tag: ${cyan(tagName)} with message: "${tagMessage}"`,
+      );
+      console.log(`Would push tag: ${cyan(tagName)}`);
+    } else {
+      console.log(`Creating tag: ${cyan(tagName)}`);
+      await $`git tag -a ${tagName} -m ${tagMessage}`;
+      await $`git push origin ${tagName}`;
+    }
   }
 }
 

@@ -646,8 +646,14 @@ async function publishPerPackage({
     });
   }
 
-  if (individualTags && dryRun !== "git") {
+  if (individualTags) {
     // Create individual tags for each package
-    await createIndividualTags(updates, modules, gitUserName!, gitUserEmail!);
+    await createIndividualTags(
+      updates,
+      modules,
+      gitUserName!,
+      gitUserEmail!,
+      dryRun,
+    );
   }
 }
