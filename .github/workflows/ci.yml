@@ -6,7 +6,7 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     strategy:
@@ -20,6 +20,8 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history and tags
       - uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ matrix.deno-version }}
       - run: deno fmt --check
       - run: deno lint
       - name: Test
