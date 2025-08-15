@@ -2,6 +2,8 @@
 
 > A tool for upgrading Deno workspace packages using conventional commits
 
+[![JSR](https://jsr.io/badges/@esroyo/deno-bump-workspaces)](https://jsr.io/@esroyo/deno-bump-workspaces)
+[![JSR Score](https://jsr.io/badges/@esroyo/deno-bump-workspaces/score)](https://jsr.io/@esroyo/deno-bump-workspaces)
 [![ci](https://github.com/esroyo/bump-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/esroyo/bump-workspaces/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/esroyo/bump-workspaces/graph/badge.svg?token=9Y9L5BV24U)](https://codecov.io/gh/esroyo/bump-workspaces)
 
@@ -27,7 +29,7 @@ This works with both:
 
 # How it works
 
-The tool works with both workspace and single-package repositories:
+The library works with both workspace and single-package repositories:
 
 **For workspace repositories:**
 
@@ -66,7 +68,7 @@ When merging PRs created by this tool, use **"Create a merge commit"** to
 preserve tag references. Avoid "Squash and merge" or "Rebase and merge" as they
 rewrite commit history and break the automatic tagging feature.
 
-[See full details](#automatic-tagging) below.
+[See full details](#%EF%B8%8F-critical-github-merge-strategy) below.
 
 # CI set up
 
@@ -75,6 +77,11 @@ manually:
 
 ```yaml
 name: version_bump
+
+# Configure your repo Settings > Actions > General > Workflow permissions
+permissions:
+  contents: write
+  pull-requests: write
 
 on: workflow_dispatch
 
@@ -96,7 +103,7 @@ jobs:
           git fetch --unshallow origin
           deno run -A jsr:@esroyo/deno-bump-workspaces/cli
         env:
-          GITHUB_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 Example pull request: https://github.com/kt3k/deno_std/pull/34
@@ -203,12 +210,58 @@ BREAKING(crypto/unstable): breaking change to unstable feature
 If this notation is used, the effect of the commit becomes `patch` no matter
 what commit type is used.
 
-# Publishing Modes
+# CLI Usage
 
-The tool supports two publishing modes and works with both workspace and
-single-package repositories:
+Run this command with `--dry-run` flag in your Deno project and see what this
+command does:
 
-## Workspace Mode (Default)
+```sh
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --dry-run
+```
+
+This works with both:
+
+- **Workspace repositories**: Projects with a `workspace` field in `deno.json`
+- **Single-package repositories**: Projects with `name` and `version` fields in
+  `deno.json`
+
+## Basic Options
+
+```sh
+# Dry run to see what would happen
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --dry-run
+
+# Use custom import map
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --import-map ./import_map.json
+
+# Custom release note path
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --release-note-path CHANGELOG.md
+```
+
+## Tag Control Options
+
+The tool supports flexible tag management:
+
+```sh
+# Default behavior: create and push tags automatically
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli
+
+# Create tags but don't push them (push manually later)
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --no-push-tags
+
+# Disable automatic tag creation entirely
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --no-create-tags
+
+# Custom tag prefix for single packages (default: "v")
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli --tag-prefix="release-"
+# Results in tags like: release-1.2.3 instead of v1.2.3
+```
+
+## Publishing Modes
+
+The library supports two publishing modes:
+
+### Workspace Mode (Default)
 
 Creates a single release with all package updates:
 
@@ -220,7 +273,7 @@ deno run -A jsr:@esroyo/deno-bump-workspaces/cli
 - Single pull request with all changes
 - Consolidated view of all updates
 
-## Per-Package Mode
+### Per-Package Mode
 
 Creates individual releases for each package:
 
@@ -236,13 +289,11 @@ deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
 # Opt out of defaults using --no-* flags
 deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
   --publish-mode per-package \
-  --no-individual-release-notes
+  --no-individual-release-notes \
+  --no-individual-tags
 ```
 
-**Note**: For single-package repositories, per-package mode behaves similarly to
-workspace mode since there's only one package to release.
-
-### Options
+**Per-Package Options:**
 
 - `--individual-prs`: Create separate PRs for each package (default: `false`)
 - `--individual-tags`: Create git tags like `@scope/package@1.2.0` (default:
@@ -250,47 +301,44 @@ workspace mode since there's only one package to release.
 - `--individual-release-notes`: Create `CHANGELOG.md` in each package directory
   (default: `true` in per-package mode)
 
-All boolean options support `--no-*` flags to override defaults (e.g.,
-`--no-individual-tags`).
-
-# Automatic Tagging
-
-The library supports automatic git tag creation. By default, tags are created
-automatically and pushed along with the version update branch.
-
-## Default Behavior
+## Complete Examples
 
 ```sh
-# Creates tags automatically (default behavior)
+# Production release with full automation
 deno run -A jsr:@esroyo/deno-bump-workspaces/cli
-```
 
-**For single-package repos**: Creates tags like `v1.2.3` **For workspace
-repos**: Creates tags like `@scope/package@1.2.3`
-
-## Tagging Options
-
-```sh
-# Disable automatic tagging
-deno run -A jsr:@esroyo/deno-bump-workspaces/cli --no-create-tags
-
-# Create tags but don't push them (push manually later)
+# Review changes before pushing tags
 deno run -A jsr:@esroyo/deno-bump-workspaces/cli --no-push-tags
+# ... review the created tags ...
+# git push origin --tags
 
-# Custom tag prefix for single packages
-deno run -A jsr:@esroyo/deno-bump-workspaces/cli --tag-prefix="release-"
-# Result: release-1.2.3 instead of v1.2.3
+# Per-package releases with custom settings
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
+  --publish-mode per-package \
+  --individual-prs \
+  --tag-prefix="pkg-" \
+  --release-note-path CHANGELOG.md
+
+# Local development workflow
+deno run -A jsr:@esroyo/deno-bump-workspaces/cli \
+  --dry-run \
+  --no-create-tags
 ```
+
+All boolean options support `--no-*` flags to override defaults (e.g.,
+`--no-individual-tags`, `--no-create-tags`, `--no-push-tags`).
 
 ## ⚠️ **Critical: GitHub Merge Strategy**
 
-When merging PRs created by this tool, you **MUST** use the correct merge
-strategy:
+When merging PRs created by this library
+[**with automatic tagging enabled**](#tag-control-options) (the default), you
+**MUST** use the correct merge strategy. If you disabled tag creation with
+`--no-create-tags`, this section doesn't apply:
 
 ### ✅ **Use: "Create a merge commit"**
 
 - Preserves original commits and their hash IDs
-- Tags created by the tool remain valid
+- Tags created by the library remain valid
 - Next run detects the correct starting point
 
 ### ❌ **Avoid: "Squash and merge" or "Rebase and merge"**
@@ -311,7 +359,7 @@ git log --oneline -3
 git tag -d v1.2.3
 
 # Recreate tag on the correct commit
-git tag v1.2.3
+git tag v1.2.3 <commitish>
 
 # Force push the corrected tag
 git push origin v1.2.3 --force
