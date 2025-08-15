@@ -16,7 +16,9 @@ jobs:
     steps:
       - name: Install lcov
         run: sudo apt-get install -y lcov
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0 # Fetch all history and tags
       - uses: denoland/setup-deno@v2
       - run: deno fmt --check
       - run: deno lint

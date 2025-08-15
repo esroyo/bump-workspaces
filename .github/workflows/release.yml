@@ -12,16 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
           ref: main
           fetch-depth: 0 # Fetch all history and tags
       - name: Set up Deno
         uses: denoland/setup-deno@v2
-        with:
-          cache: true
       - name: Run workspaces version bump
-        run: deno run -A jsr:@esroyo/deno-bump-workspaces/cli
+        run: deno run -A jsr:@esroyo/deno-bump-workspaces/cli --release-note-path="CHANGELOG.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_USER_NAME: ${{ github.actor }}
