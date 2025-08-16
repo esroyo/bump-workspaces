@@ -358,6 +358,7 @@ export async function bumpWorkspaces(
         createTags,
         tagPrefix,
         pushTags,
+        publishMode,
       });
     } else {
       // Use workspace mode for single-package repos or when explicitly requested
@@ -427,7 +428,15 @@ async function publishWorkspace({
   tagPrefix?: string;
   pushTags?: boolean;
 }) {
-  const releaseNote = createReleaseNote(updates, modules, now);
+  const releaseNote = createReleaseNote(
+    updates,
+    modules,
+    now,
+    githubRepo,
+    tagPrefix,
+    "workspace",
+    false,
+  );
 
   if (dryRun === true) {
     console.log();
@@ -585,6 +594,7 @@ async function publishPerPackage({
   createTags,
   pushTags,
   tagPrefix,
+  publishMode,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -606,6 +616,7 @@ async function publishPerPackage({
   createTags?: boolean;
   tagPrefix?: string;
   pushTags?: boolean;
+  publishMode: "per-package";
 }) {
   console.log(`Publishing per-package mode with ${updates.length} packages`);
 
@@ -639,12 +650,23 @@ async function publishPerPackage({
   // Update import map first
   await Deno.writeTextFile(importMapPath, importMapJson);
 
+  const isSinglePackage = modules.length === 1 &&
+    modules[0][pathProp].endsWith("deno.json");
+
   if (individualReleaseNotes) {
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
       const packageDir = getPackageDir(module, root);
       const packageReleaseNotePath = join(packageDir, releaseNotePath);
-      const packageReleaseNote = createPackageReleaseNote(update, now);
+      const packageReleaseNote = createPackageReleaseNote(
+        update,
+        now,
+        githubRepo,
+        tagPrefix,
+        publishMode,
+        individualTags,
+        isSinglePackage,
+      );
 
       await ensureFile(packageReleaseNotePath);
       const existingContent = await Deno.readTextFile(packageReleaseNotePath)

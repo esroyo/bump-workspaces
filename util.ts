@@ -553,12 +553,49 @@ export function createReleaseNote(
   updates: VersionUpdateResult[],
   modules: WorkspaceModule[],
   date: Date,
+  githubRepo?: string,
+  tagPrefix: string = "v",
+  publishMode: "workspace" | "per-package" = "workspace",
+  individualTags: boolean = false,
 ) {
   const heading = `### ${createReleaseTitle(date)}\n\n`;
+
+  const isSinglePackage = modules.length === 1 &&
+    modules[0][pathProp].endsWith("deno.json");
+
   return heading + updates.map((u) => {
     const module = getModule(u.summary.module, modules)!;
-    return `#### ${module.name} ${u.to} (${u.diff}) \n` +
-      u.summary.commits.map((c) => `- ${c.subject}\n`).join("");
+    // Determine tag format for compare links based on publish mode and settings
+    let fromTag: string, toTag: string;
+
+    if (isSinglePackage || (publishMode === "workspace" && !individualTags)) {
+      // Single package OR workspace mode (consolidated releases) use v1.2.3 format
+      fromTag = `${tagPrefix}${u.from}`;
+      toTag = `${tagPrefix}${u.to}`;
+    } else if (publishMode === "per-package" && individualTags) {
+      // Per-package mode with individual tags uses @scope/package@1.2.3 format
+      fromTag = `${module.name}@${u.from}`;
+      toTag = `${module.name}@${u.to}`;
+    } else {
+      // Fallback to workspace format
+      fromTag = `${tagPrefix}${u.from}`;
+      toTag = `${tagPrefix}${u.to}`;
+    }
+
+    // Create version with compare link if GitHub repo is available
+    const versionText = githubRepo
+      ? `[${u.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
+      : u.to;
+
+    const commits = u.summary.commits.map((c) => {
+      const shortHash = c.hash.substring(0, 7);
+      const commitLink = githubRepo
+        ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
+        : "";
+      return `- ${c.subject}${commitLink}\n`;
+    }).join("");
+
+    return `#### ${module.name} ${versionText} (${u.diff}) \n${commits}`;
   }).join("\n");
 }
 
@@ -659,6 +696,7 @@ export async function createIndividualPRs({
   dryRun,
   createTags,
   pushTags,
+  tagPrefix,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -696,6 +734,9 @@ export async function createIndividualPRs({
   const octoKit = new Octokit({ auth: githubToken });
   const [owner, repo] = githubRepo.split("/");
 
+  const isSinglePackage = modules.length === 1 &&
+    modules[0][pathProp].endsWith("deno.json");
+
   for (const update of updates) {
     const module = getModule(update.summary.module, modules)!;
     const branchName = createPackageReleaseBranchName(
@@ -712,7 +753,15 @@ export async function createIndividualPRs({
     // Create package-specific release note in package directory
     const packageDir = getPackageDir(module, root);
     const packageReleaseNotePath = join(packageDir, releaseNotePath);
-    const packageReleaseNote = createPackageReleaseNote(update, now);
+    const packageReleaseNote = createPackageReleaseNote(
+      update,
+      now,
+      githubRepo,
+      tagPrefix,
+      "per-package",
+      true,
+      isSinglePackage,
+    );
 
     await ensureFile(packageReleaseNotePath);
     const existingContent = await Deno.readTextFile(packageReleaseNotePath)
@@ -800,6 +849,7 @@ export async function createSinglePRWithPackageBreakdown({
   dryRun,
   createTags,
   pushTags,
+  tagPrefix,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
@@ -818,13 +868,24 @@ export async function createSinglePRWithPackageBreakdown({
   tagPrefix?: string;
   pushTags?: boolean;
 }) {
+  const isSinglePackage = modules.length === 1 &&
+    modules[0][pathProp].endsWith("deno.json");
+
   // Create individual release notes in package directories
   if (individualReleaseNotes) {
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
       const packageDir = getPackageDir(module, root);
       const packageReleaseNotePath = join(packageDir, releaseNotePath);
-      const packageReleaseNote = createPackageReleaseNote(update, now);
+      const packageReleaseNote = createPackageReleaseNote(
+        update,
+        now,
+        githubRepo,
+        tagPrefix,
+        "per-package",
+        true,
+        isSinglePackage,
+      );
 
       await ensureFile(packageReleaseNotePath);
       const existingContent = await Deno.readTextFile(packageReleaseNotePath)
@@ -837,7 +898,15 @@ export async function createSinglePRWithPackageBreakdown({
   }
 
   // Also create the main release note in workspace root
-  const releaseNote = createReleaseNote(updates, modules, now);
+  const releaseNote = createReleaseNote(
+    updates,
+    modules,
+    now,
+    githubRepo,
+    tagPrefix,
+    "per-package",
+    true,
+  );
   const workspaceReleaseNotePath = join(root, releaseNotePath);
   await ensureFile(workspaceReleaseNotePath);
   const existingWorkspaceContent = await Deno.readTextFile(
@@ -963,12 +1032,49 @@ export async function createIndividualTags(
 export function createPackageReleaseNote(
   update: VersionUpdateResult,
   date: Date,
+  githubRepo?: string,
+  tagPrefix: string = "v",
+  publishMode: "workspace" | "per-package" = "workspace",
+  individualTags: boolean = false,
+  isSinglePackage: boolean = false,
 ): string {
-  const heading = `### ${update.summary.module} ${update.to} (${
+  const module = update.summary.module;
+
+  // Determine tag format for compare links based on publish mode and settings
+  let fromTag: string, toTag: string;
+
+  if (isSinglePackage || (publishMode === "workspace" && !individualTags)) {
+    // Single package OR workspace mode (consolidated releases) use v1.2.3 format
+    fromTag = `${tagPrefix}${update.from}`;
+    toTag = `${tagPrefix}${update.to}`;
+  } else if (publishMode === "per-package" && individualTags) {
+    // Per-package mode with individual tags uses @scope/package@1.2.3 format
+    fromTag = `${module}@${update.from}`;
+    toTag = `${module}@${update.to}`;
+  } else {
+    // Fallback to workspace format
+    fromTag = `${tagPrefix}${update.from}`;
+    toTag = `${tagPrefix}${update.to}`;
+  }
+
+  // Create version with compare link if GitHub repo is available
+  const versionText = githubRepo
+    ? `[${update.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
+    : update.to;
+
+  const heading = `### ${module} ${versionText} (${
     createReleaseTitle(date)
   })\n\n`;
-  return heading +
-    update.summary.commits.map((c) => `- ${c.subject}\n`).join("");
+
+  const commits = update.summary.commits.map((c) => {
+    const shortHash = c.hash.substring(0, 7);
+    const commitLink = githubRepo
+      ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
+      : "";
+    return `- ${c.subject}${commitLink}\n`;
+  }).join("");
+
+  return heading + commits;
 }
 
 export function createPackagePrBody(

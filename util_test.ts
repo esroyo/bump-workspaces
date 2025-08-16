@@ -1268,6 +1268,137 @@ Deno.test("createReleaseNote()", async (t) => {
   await assertSnapshot(t, createReleaseNote(updates, modules, new Date(0)));
 });
 
+Deno.test("createReleaseNote() with GitHub links - workspace mode", async (t) => {
+  const [_, modules] = await getWorkspaceModules("testdata/std_mock");
+  const [updates, _diagnostics] = await createVersionUpdateResults(
+    exampleVersionBumps,
+    modules,
+  );
+
+  // Test workspace mode with GitHub repo (should use v1.2.3 format)
+  const releaseNoteWorkspace = createReleaseNote(
+    updates,
+    modules,
+    new Date(0),
+    "denoland/deno_std",
+    "v",
+    "workspace",
+    false,
+  );
+  await assertSnapshot(t, releaseNoteWorkspace);
+});
+
+Deno.test("createReleaseNote() with GitHub links - per-package mode", async (t) => {
+  const [_, modules] = await getWorkspaceModules("testdata/std_mock");
+  const [updates, _diagnostics] = await createVersionUpdateResults(
+    exampleVersionBumps,
+    modules,
+  );
+
+  // Test per-package mode with individual tags (should use @scope/package@1.2.3 format)
+  const releaseNotePerPackage = createReleaseNote(
+    updates,
+    modules,
+    new Date(0),
+    "denoland/deno_std",
+    "v",
+    "per-package",
+    true,
+  );
+  await assertSnapshot(t, releaseNotePerPackage);
+});
+
+Deno.test("createPackageReleaseNote() with GitHub links - different modes", async (t) => {
+  const mockUpdate = {
+    summary: {
+      module: "@scope/test-package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat(test-package): add new feature",
+          body: "",
+          hash: "abc1234567890abcdef1234567890abcdef123456",
+          tag: "feat",
+        },
+        {
+          subject: "fix(test-package): fix critical bug",
+          body: "",
+          hash: "def4567890abcdef1234567890abcdef12345678",
+          tag: "fix",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  // Test workspace mode (should use v1.2.3 format even for scoped packages)
+  const noteWorkspaceMode = createPackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+    "owner/repo",
+    "v",
+    "workspace",
+    false,
+    false,
+  );
+  await assertSnapshot(t, { mode: "workspace", content: noteWorkspaceMode });
+
+  // Test per-package mode with individual tags (should use @scope/package@1.2.3 format)
+  const notePerPackageMode = createPackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+    "owner/repo",
+    "v",
+    "per-package",
+    true,
+    false,
+  );
+  await assertSnapshot(t, { mode: "per-package", content: notePerPackageMode });
+
+  // Test single package (should always use v1.2.3 format)
+  const noteSinglePackage = createPackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+    "owner/repo",
+    "v",
+    "per-package",
+    true,
+    true, // isSinglePackage = true
+  );
+  await assertSnapshot(t, {
+    mode: "single-package",
+    content: noteSinglePackage,
+  });
+});
+
+Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
+  const mockUpdate = {
+    summary: {
+      module: "@scope/test-package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat(test-package): add new feature",
+          body: "",
+          hash: "abc1234567890abcdef1234567890abcdef123456",
+          tag: "feat",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  // Test without GitHub repo (backward compatibility)
+  const noteWithoutLinks = createPackageReleaseNote(mockUpdate, new Date(0));
+  await assertSnapshot(t, noteWithoutLinks);
+});
+
 Deno.test("createPrBody()", async (t) => {
   const [_, modules] = await getWorkspaceModules("testdata/std_mock");
   const [updates, diagnostics] = await createVersionUpdateResults(
