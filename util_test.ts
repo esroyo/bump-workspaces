@@ -1,5 +1,4 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
-
 import {
   assert,
   assertEquals,
@@ -15,10 +14,7 @@ import {
   calcVersionDiff,
   checkModuleName,
   ConfigurationError,
-  createPackagePrBody,
-  createPackageReleaseBranchName,
   createPackageReleaseNote,
-  createPerPackagePrBody,
   createPrBody,
   createReleaseBranchName,
   createReleaseNote,
@@ -27,6 +23,7 @@ import {
   type Diagnostic,
   getModule,
   getPackageDir,
+  getPreviousConsolidatedTag,
   getSmartStartTag,
   getWorkspaceModules,
   getWorkspaceModulesForTesting,
@@ -1268,47 +1265,50 @@ Deno.test("createReleaseNote()", async (t) => {
   await assertSnapshot(t, createReleaseNote(updates, modules, new Date(0)));
 });
 
-Deno.test("createReleaseNote() with GitHub links - workspace mode", async (t) => {
+Deno.test("createReleaseNote() with GitHub links - consolidated tags", async (t) => {
   const [_, modules] = await getWorkspaceModules("testdata/std_mock");
   const [updates, _diagnostics] = await createVersionUpdateResults(
     exampleVersionBumps,
     modules,
   );
 
-  // Test workspace mode with GitHub repo (should use v1.2.3 format)
-  const releaseNoteWorkspace = createReleaseNote(
+  // Test consolidated tags (individualTags=false)
+  const releaseNoteConsolidated = createReleaseNote(
     updates,
     modules,
     new Date(0),
     "denoland/deno_std",
-    "v",
-    "workspace",
-    false,
+    false, // individualTags=false
+    "release-2024.12.31", // previousTag
   );
-  await assertSnapshot(t, releaseNoteWorkspace);
+  await assertSnapshot(t, {
+    mode: "consolidated",
+    content: releaseNoteConsolidated,
+  });
 });
 
-Deno.test("createReleaseNote() with GitHub links - per-package mode", async (t) => {
+Deno.test("createReleaseNote() with GitHub links - individual tags", async (t) => {
   const [_, modules] = await getWorkspaceModules("testdata/std_mock");
   const [updates, _diagnostics] = await createVersionUpdateResults(
     exampleVersionBumps,
     modules,
   );
 
-  // Test per-package mode with individual tags (should use @scope/package@1.2.3 format)
-  const releaseNotePerPackage = createReleaseNote(
+  // Test individual tags (individualTags=true)
+  const releaseNoteIndividual = createReleaseNote(
     updates,
     modules,
     new Date(0),
     "denoland/deno_std",
-    "v",
-    "per-package",
-    true,
+    true, // individualTags=true
   );
-  await assertSnapshot(t, releaseNotePerPackage);
+  await assertSnapshot(t, {
+    mode: "individual",
+    content: releaseNoteIndividual,
+  });
 });
 
-Deno.test("createPackageReleaseNote() with GitHub links - different modes", async (t) => {
+Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   const mockUpdate = {
     summary: {
       module: "@scope/test-package",
@@ -1334,43 +1334,59 @@ Deno.test("createPackageReleaseNote() with GitHub links - different modes", asyn
     path: "/path/to/deno.json",
   };
 
-  // Test workspace mode (should use v1.2.3 format even for scoped packages)
-  const noteWorkspaceMode = createPackageReleaseNote(
+  // Test individual tags mode
+  const noteIndividualTags = createPackageReleaseNote(
     mockUpdate,
     new Date(0),
     "owner/repo",
-    "v",
-    "workspace",
-    false,
-    false,
+    true, // individualTags=true
+    false, // isSinglePackage=false
   );
-  await assertSnapshot(t, { mode: "workspace", content: noteWorkspaceMode });
+  await assertSnapshot(t, {
+    mode: "individual-tags",
+    content: noteIndividualTags,
+  });
 
-  // Test per-package mode with individual tags (should use @scope/package@1.2.3 format)
-  const notePerPackageMode = createPackageReleaseNote(
+  // Test consolidated tags mode
+  const noteConsolidatedTags = createPackageReleaseNote(
     mockUpdate,
     new Date(0),
     "owner/repo",
-    "v",
-    "per-package",
-    true,
-    false,
+    false, // individualTags=false
+    false, // isSinglePackage=false
+    "release-2024.12.31", // previousTag
   );
-  await assertSnapshot(t, { mode: "per-package", content: notePerPackageMode });
+  await assertSnapshot(t, {
+    mode: "consolidated-tags",
+    content: noteConsolidatedTags,
+  });
 
-  // Test single package (should always use v1.2.3 format)
+  // Test single package mode
   const noteSinglePackage = createPackageReleaseNote(
     mockUpdate,
     new Date(0),
     "owner/repo",
-    "v",
-    "per-package",
-    true,
-    true, // isSinglePackage = true
+    false, // individualTags=false (should be ignored for single package)
+    true, // isSinglePackage=true
   );
   await assertSnapshot(t, {
     mode: "single-package",
     content: noteSinglePackage,
+  });
+});
+
+Deno.test("getPreviousConsolidatedTag() functionality", async () => {
+  await withGitContextForTesting(async () => {
+    // Test the function with different tag prefixes
+    const previousTag = await getPreviousConsolidatedTag(true);
+
+    // Should return either a tag or undefined
+    if (previousTag) {
+      assert(typeof previousTag === "string");
+      assert(previousTag.length > 0);
+    } else {
+      assertEquals(previousTag, undefined);
+    }
   });
 });
 
@@ -1457,128 +1473,6 @@ Deno.test("createPackageReleaseNote() format", async (t) => {
 
   const note = createPackageReleaseNote(mockUpdate, new Date(0));
   await assertSnapshot(t, note);
-});
-
-Deno.test("createPackageReleaseBranchName() format", async (t) => {
-  const branchName = createPackageReleaseBranchName(
-    "@scope/my-package",
-    "1.2.3",
-    new Date(0),
-  );
-  assertEquals(
-    branchName,
-    "release-scope-my-package-1.2.3-1970-01-01-00-00-00",
-  );
-
-  const branchNameSimple = createPackageReleaseBranchName(
-    "simple-package",
-    "0.1.0",
-    new Date(0),
-  );
-  assertEquals(
-    branchNameSimple,
-    "release-simple-package-0.1.0-1970-01-01-00-00-00",
-  );
-
-  await assertSnapshot(t, { branchName, branchNameSimple });
-});
-
-Deno.test("createPackagePrBody() format", async (t) => {
-  const mockUpdate = {
-    summary: {
-      module: "@scope/test-package",
-      version: "minor" as const,
-      commits: [
-        {
-          subject: "feat(test-package): add new feature",
-          body: "",
-          hash: "abc123",
-          tag: "feat",
-        },
-        {
-          subject: "fix(test-package): fix critical bug",
-          body: "",
-          hash: "def456",
-          tag: "fix",
-        },
-      ],
-    },
-    from: "1.0.0",
-    to: "1.1.0",
-    diff: "minor" as const,
-    path: "/path/to/deno.json",
-  };
-
-  const diagnostics = [
-    {
-      type: "unknown_commit" as const,
-      commit: {
-        subject: "some unknown commit",
-        body: "",
-        hash: "xyz789",
-      },
-      reason: "Unknown commit format",
-    },
-  ];
-
-  const prBody = createPackagePrBody(
-    mockUpdate,
-    diagnostics,
-    "owner/repo",
-    "release-branch",
-  );
-  await assertSnapshot(t, prBody);
-});
-
-Deno.test("createPerPackagePrBody() format", async (t) => {
-  const mockUpdates = [
-    {
-      summary: {
-        module: "@scope/package-a",
-        version: "minor" as const,
-        commits: [
-          {
-            subject: "feat(package-a): add feature A",
-            body: "",
-            hash: "abc123",
-            tag: "feat",
-          },
-        ],
-      },
-      from: "1.0.0",
-      to: "1.1.0",
-      diff: "minor" as const,
-      path: "/path/to/a/deno.json",
-    },
-    {
-      summary: {
-        module: "@scope/package-b",
-        version: "patch" as const,
-        commits: [
-          {
-            subject: "fix(package-b): fix bug B",
-            body: "",
-            hash: "def456",
-            tag: "fix",
-          },
-        ],
-      },
-      from: "2.0.0",
-      to: "2.0.1",
-      diff: "patch" as const,
-      path: "/path/to/b/deno.json",
-    },
-  ];
-
-  const diagnostics: Diagnostic[] = [];
-
-  const prBody = createPerPackagePrBody(
-    mockUpdates,
-    diagnostics,
-    "owner/repo",
-    "release-branch",
-  );
-  await assertSnapshot(t, prBody);
 });
 
 Deno.test("getWorkspaceModules() handles single-package repos", async () => {
@@ -1689,9 +1583,9 @@ Deno.test("getSmartStartTag() with different modes", async () => {
     try {
       // Test per-package mode with logging enabled
       const perPackageTag = await getSmartStartTag(
-        "per-package",
+        true, // individualTags=true
         modules,
-        "v",
+        false, // isSinglePackage=false
         false, // Enable logging to verify behavior
       );
       assert(typeof perPackageTag === "string");
@@ -1703,14 +1597,28 @@ Deno.test("getSmartStartTag() with different modes", async () => {
 
       // Test workspace mode
       const workspaceTag = await getSmartStartTag(
-        "workspace",
+        false, // individualTags=false
         modules,
-        "v",
+        false, // isSinglePackage=false
         false, // Enable logging
       );
       assert(typeof workspaceTag === "string");
       assertEquals(
         workspaceTag.length > 0,
+        true,
+        "Should return a non-empty tag",
+      );
+
+      // Test single package mode
+      const singlePackageTag = await getSmartStartTag(
+        false, // individualTags (ignored for single package)
+        [modules[0]], // Single module
+        true, // isSinglePackage=true
+        false, // Enable logging
+      );
+      assert(typeof singlePackageTag === "string");
+      assertEquals(
+        singlePackageTag.length > 0,
         true,
         "Should return a non-empty tag",
       );

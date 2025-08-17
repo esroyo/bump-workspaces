@@ -6,38 +6,57 @@ snapshot[`bumpWorkspaces() 1`] = `
 #### @scope/bar 2.3.5 (patch)
 
 - fix(foo,bar,baz,qux,quux): a fix
+  ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 - chore(bar): a chore
+  ([0284c97](https://github.com/denoland/deno_std/commit/0284c9776c9bb128614f2b83ef20a80b171fd513))
 
 #### @scope/baz 0.2.4 (patch)
 
 - feat(baz): add a feature
+  ([a6e0348](https://github.com/denoland/deno_std/commit/a6e03485ef05f9646d2588420ab8936b81f988d3))
 - fix(foo,bar,baz,qux,quux): a fix
+  ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 
 #### @scope/foo 2.0.0 (major)
 
 - BREAKING(foo): a breaking change
+  ([1bfe24b](https://github.com/denoland/deno_std/commit/1bfe24bb9af5207bdfe1a6bb1e13cee7b1d92e43))
 - deprecation(foo): a deprecation
+  ([bc04b4a](https://github.com/denoland/deno_std/commit/bc04b4ad73800ab70acccbea3f4580015ca31d61))
 - fix(foo,bar,baz,qux,quux): a fix
+  ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 - docs(foo): add docs
+  ([785a723](https://github.com/denoland/deno_std/commit/785a723bfbf8c6d39f077968e8d8cdfc95b7cacc))
 
 #### @scope/quux 0.1.0 (minor)
 
 - BREAKING(quux): a breaking change
+  ([c57ef9c](https://github.com/denoland/deno_std/commit/c57ef9c31c67b284eeae8e89f92fc3c85dd81342))
 - fix(foo,bar,baz,qux,quux): a fix
+  ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 - style(qux,quux): style update
+  ([d935f3c](https://github.com/denoland/deno_std/commit/d935f3ca9c9d29609c9a75358f2008141262b247))
 - test(quux): add a test
+  ([0bbf4d4](https://github.com/denoland/deno_std/commit/0bbf4d4e65a21d1482d65a7a45d48bd7978768c9))
 
 #### @scope/qux 0.3.5 (patch)
 
 - fix(foo,bar,baz,qux,quux): a fix
+  ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 - perf(qux): a perf improvement
+  ([9866907](https://github.com/denoland/deno_std/commit/9866907e9dee0b4910bc4063690b499000b578a8))
 - style(qux,quux): style update
+  ([d935f3c](https://github.com/denoland/deno_std/commit/d935f3ca9c9d29609c9a75358f2008141262b247))
 - chore(qux): a chore
+  ([4afdd13](https://github.com/denoland/deno_std/commit/4afdd13899c238cceea50d2d4ec9f6927e4a6500))
 "
 `;
 
-snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
+snapshot[`bumpWorkspaces() individual tags and release notes mode with dry run 1`] = `
 [
+  'Capturing git state: branch="main", uncommitted=false',
+  "Processing workspace with [36m5[39m packages",
+  "Using per-package strategy (individual tags + individual release notes)",
   "Found [36m18[39m commits between [35mstart-tag-for-testing[39m and [35morigin/base-branch-for-testing[39m.",
   "Updating the versions:",
   "Found [36m5[39m diagnostics:",
@@ -46,88 +65,53 @@ snapshot[`bumpWorkspaces() per-package mode with dry run 1`] = `
   "  unknown_range_commit fix(unknown): a fix",
   "  missing_range fix: a fix",
   "  missing_range perf: a perf improvement",
-  "Publishing per-package mode with 5 packages",
-  "[36mDry run mode - showing what would be done:[39m",
-  "
-[36mPackage: @scope/bar[39m",
-  "Release note path: /tmp/test-dir/bar/CHANGELOG.md",
-  "Release note:",
-  "### bar 2.3.5 (YYYY.MM.DD)
+  "",
+  "[36mThe release note:[39m",
+  "### 2025.08.17
 
-- fix(foo,bar,baz,qux,quux): a fix
-- chore(bar): a chore
-",
-  "Would create tag: @scope/bar@2.3.5",
-  "Would create individual PR for @scope/bar",
-  "
-[36mPackage: @scope/baz[39m",
-  "Release note path: /tmp/test-dir/baz/CHANGELOG.md",
-  "Release note:",
-  "### baz 0.2.4 (YYYY.MM.DD)
+#### @scope/bar [2.3.5](https://github.com/denoland/deno_std/compare/@scope/bar@2.3.4...@scope/bar@2.3.5) (patch) 
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
+- chore(bar): a chore ([0284c97](https://github.com/denoland/deno_std/commit/0284c9776c9bb128614f2b83ef20a80b171fd513))
 
-- feat(baz): add a feature
-- fix(foo,bar,baz,qux,quux): a fix
-",
-  "Would create tag: @scope/baz@0.2.4",
-  "Would create individual PR for @scope/baz",
-  "
-[36mPackage: @scope/foo[39m",
-  "Release note path: /tmp/test-dir/foo/CHANGELOG.md",
-  "Release note:",
-  "### foo 2.0.0 (YYYY.MM.DD)
+#### @scope/baz [0.2.4](https://github.com/denoland/deno_std/compare/@scope/baz@0.2.3...@scope/baz@0.2.4) (patch) 
+- feat(baz): add a feature ([a6e0348](https://github.com/denoland/deno_std/commit/a6e03485ef05f9646d2588420ab8936b81f988d3))
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
 
-- BREAKING(foo): a breaking change
-- deprecation(foo): a deprecation
-- fix(foo,bar,baz,qux,quux): a fix
-- docs(foo): add docs
-",
-  "Would create tag: @scope/foo@2.0.0",
-  "Would create individual PR for @scope/foo",
-  "
-[36mPackage: @scope/quux[39m",
-  "Release note path: /tmp/test-dir/quux/CHANGELOG.md",
-  "Release note:",
-  "### quux 0.1.0 (YYYY.MM.DD)
+#### @scope/foo [2.0.0](https://github.com/denoland/deno_std/compare/@scope/foo@1.2.3...@scope/foo@2.0.0) (major) 
+- BREAKING(foo): a breaking change ([1bfe24b](https://github.com/denoland/deno_std/commit/1bfe24bb9af5207bdfe1a6bb1e13cee7b1d92e43))
+- deprecation(foo): a deprecation ([bc04b4a](https://github.com/denoland/deno_std/commit/bc04b4ad73800ab70acccbea3f4580015ca31d61))
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
+- docs(foo): add docs ([785a723](https://github.com/denoland/deno_std/commit/785a723bfbf8c6d39f077968e8d8cdfc95b7cacc))
 
-- BREAKING(quux): a breaking change
-- fix(foo,bar,baz,qux,quux): a fix
-- style(qux,quux): style update
-- test(quux): add a test
-",
-  "Would create tag: @scope/quux@0.1.0",
-  "Would create individual PR for @scope/quux",
-  "
-[36mPackage: @scope/qux[39m",
-  "Release note path: /tmp/test-dir/qux/CHANGELOG.md",
-  "Release note:",
-  "### qux 0.3.5 (YYYY.MM.DD)
+#### @scope/quux [0.1.0](https://github.com/denoland/deno_std/compare/@scope/quux@0.0.0...@scope/quux@0.1.0) (minor) 
+- BREAKING(quux): a breaking change ([c57ef9c](https://github.com/denoland/deno_std/commit/c57ef9c31c67b284eeae8e89f92fc3c85dd81342))
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
+- style(qux,quux): style update ([d935f3c](https://github.com/denoland/deno_std/commit/d935f3ca9c9d29609c9a75358f2008141262b247))
+- test(quux): add a test ([0bbf4d4](https://github.com/denoland/deno_std/commit/0bbf4d4e65a21d1482d65a7a45d48bd7978768c9))
 
-- fix(foo,bar,baz,qux,quux): a fix
-- perf(qux): a perf improvement
-- style(qux,quux): style update
-- chore(qux): a chore
+#### @scope/qux [0.3.5](https://github.com/denoland/deno_std/compare/@scope/qux@0.3.4...@scope/qux@0.3.5) (patch) 
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
+- perf(qux): a perf improvement ([9866907](https://github.com/denoland/deno_std/commit/9866907e9dee0b4910bc4063690b499000b578a8))
+- style(qux,quux): style update ([d935f3c](https://github.com/denoland/deno_std/commit/d935f3ca9c9d29609c9a75358f2008141262b247))
+- chore(qux): a chore ([4afdd13](https://github.com/denoland/deno_std/commit/4afdd13899c238cceea50d2d4ec9f6927e4a6500))
 ",
-  "Would create tag: @scope/qux@0.3.5",
-  "Would create individual PR for @scope/qux",
+  "",
+  "[36mSkip making a commit.[39m",
+  "[36mSkip making a pull request.[39m",
   "Done.",
+  "Already on target branch: main",
+  "Git state restored successfully",
 ]
 `;
 
-snapshot[`bumpWorkspaces() per-package mode with git dry run 1`] = `
+snapshot[`bumpWorkspaces() individual release notes with git dry run 1`] = `
 {
-  content: "### foo 2.0.0 (YYYY.MM.DD)
+  content: "### foo [2.0.0](https://github.com/denoland/deno_std/compare/HEAD~1...release-YYYY.MM.DD) (YYYY.MM.DD)
 
-- BREAKING(foo): a breaking change
-- deprecation(foo): a deprecation
-- fix(foo,bar,baz,qux,quux): a fix
-- docs(foo): add docs
-
-### foo 2.0.0 (YYYY.MM.DD)
-
-- BREAKING(foo): a breaking change
-- deprecation(foo): a deprecation
-- fix(foo,bar,baz,qux,quux): a fix
-- docs(foo): add docs
+- BREAKING(foo): a breaking change ([1bfe24b](https://github.com/denoland/deno_std/commit/1bfe24bb9af5207bdfe1a6bb1e13cee7b1d92e43))
+- deprecation(foo): a deprecation ([bc04b4a](https://github.com/denoland/deno_std/commit/bc04b4ad73800ab70acccbea3f4580015ca31d61))
+- fix(foo,bar,baz,qux,quux): a fix ([9b0db21](https://github.com/denoland/deno_std/commit/9b0db21e23f8fcda2564aeba5fe95436ab74d241))
+- docs(foo): add docs ([785a723](https://github.com/denoland/deno_std/commit/785a723bfbf8c6d39f077968e8d8cdfc95b7cacc))
 
 ",
   packageDir: "foo",

@@ -1,7 +1,7 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
 import { $ } from "@david/dax";
 import { Octokit } from "npm:octokit@^3.1";
-import { cyan } from "@std/fmt/colors";
+import { cyan, magenta } from "@std/fmt/colors";
 import { ensureFile } from "@std/fs/ensure-file";
 import { parse as parseJsonc } from "@std/jsonc/parse";
 import { join } from "@std/path/join";
@@ -74,13 +74,6 @@ export type SkippedCommit = {
   type: "skipped_commit";
   commit: Commit;
   reason: string;
-};
-
-export type AppliedVersionBump = {
-  oldVersion: string;
-  newVersion: string;
-  diff: VersionUpdate;
-  denoJson: string;
 };
 
 export type VersionUpdateResult = {
@@ -554,9 +547,8 @@ export function createReleaseNote(
   modules: WorkspaceModule[],
   date: Date,
   githubRepo?: string,
-  tagPrefix: string = "v",
-  publishMode: "workspace" | "per-package" = "workspace",
   individualTags: boolean = false,
+  previousTag?: string,
 ) {
   const heading = `### ${createReleaseTitle(date)}\n\n`;
 
@@ -565,27 +557,29 @@ export function createReleaseNote(
 
   return heading + updates.map((u) => {
     const module = getModule(u.summary.module, modules)!;
-    // Determine tag format for compare links based on publish mode and settings
+
+    // Determine tag format based on individualTags and isSinglePackage
     let fromTag: string, toTag: string;
 
-    if (isSinglePackage || (publishMode === "workspace" && !individualTags)) {
-      // Single package OR workspace mode (consolidated releases) use v1.2.3 format
-      fromTag = `${tagPrefix}${u.from}`;
-      toTag = `${tagPrefix}${u.to}`;
-    } else if (publishMode === "per-package" && individualTags) {
-      // Per-package mode with individual tags uses @scope/package@1.2.3 format
+    if (isSinglePackage) {
+      // Single package always uses semver format: v1.2.3
+      fromTag = `v${u.from}`;
+      toTag = `v${u.to}`;
+    } else if (individualTags) {
+      // Multi-package with individual tags: @scope/package@1.2.3
       fromTag = `${module.name}@${u.from}`;
       toTag = `${module.name}@${u.to}`;
     } else {
-      // Fallback to workspace format
-      fromTag = `${tagPrefix}${u.from}`;
-      toTag = `${tagPrefix}${u.to}`;
+      // Multi-package with consolidated tags: release-YYYY.MM.DD
+      const currentTag = `release-${createReleaseTitle(date)}`;
+      fromTag = previousTag || ""; // Will be empty if no previous tag
+      toTag = currentTag;
     }
 
-    // Create version with compare link if GitHub repo is available
-    const versionText = githubRepo
+    // Create version with compare link only if we have a meaningful fromTag and GitHub repo
+    const versionText = githubRepo && fromTag
       ? `[${u.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
-      : u.to;
+      : u.to; // Just show version number without link
 
     const commits = u.summary.commits.map((c) => {
       const shortHash = c.hash.substring(0, 7);
@@ -681,197 +675,54 @@ export function createReleaseTitle(d: Date) {
   return `${year}.${month}.${date}`;
 }
 
-export async function createIndividualPRs({
+export async function createPullRequest({
   updates,
   modules,
   diagnostics,
   now,
-  gitUserName,
-  gitUserEmail,
-  githubToken,
-  githubRepo,
-  base,
+  dryRun,
   releaseNotePath,
   root,
-  dryRun,
-  createTags,
-  pushTags,
-  tagPrefix,
-}: {
-  updates: VersionUpdateResult[];
-  modules: WorkspaceModule[];
-  diagnostics: Diagnostic[];
-  now: Date;
-  gitUserName: string;
-  gitUserEmail: string;
-  githubToken: string;
-  githubRepo: string;
-  base: string;
-  releaseNotePath: string;
-  root: string;
-  dryRun: boolean | "git";
-  createTags?: boolean;
-  tagPrefix?: string;
-  pushTags?: boolean;
-}) {
-  if (dryRun === "git") {
-    console.log(cyan("Git dry run mode - skipping individual PR creation"));
-    for (const update of updates) {
-      const module = getModule(update.summary.module, modules)!;
-      const branchName = createPackageReleaseBranchName(
-        module.name,
-        update.to,
-        now,
-      );
-      console.log(`Would create branch: ${branchName} for ${module.name}`);
-      console.log(
-        `Would create PR: chore(${module.name}): release ${update.to}`,
-      );
-    }
-    return;
-  }
-
-  const octoKit = new Octokit({ auth: githubToken });
-  const [owner, repo] = githubRepo.split("/");
-
-  const isSinglePackage = modules.length === 1 &&
-    modules[0][pathProp].endsWith("deno.json");
-
-  for (const update of updates) {
-    const module = getModule(update.summary.module, modules)!;
-    const branchName = createPackageReleaseBranchName(
-      module.name,
-      update.to,
-      now,
-    );
-
-    console.log(`Creating individual PR for ${cyan(module.name)}`);
-
-    // Create branch for this package
-    await $`git checkout -b ${branchName}`;
-
-    // Create package-specific release note in package directory
-    const packageDir = getPackageDir(module, root);
-    const packageReleaseNotePath = join(packageDir, releaseNotePath);
-    const packageReleaseNote = createPackageReleaseNote(
-      update,
-      now,
-      githubRepo,
-      tagPrefix,
-      "per-package",
-      true,
-      isSinglePackage,
-    );
-
-    await ensureFile(packageReleaseNotePath);
-    const existingContent = await Deno.readTextFile(packageReleaseNotePath)
-      .catch(() => "");
-    await Deno.writeTextFile(
-      packageReleaseNotePath,
-      packageReleaseNote + "\n" + existingContent,
-    );
-    await $`git add ${packageReleaseNotePath}`;
-
-    await $`git add .`;
-    await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore(${module.name}): release ${update.to}"`;
-
-    if (createTags) {
-      const tagName = `${module.name}@${update.to}`;
-
-      if (dryRun) {
-        console.log(`Would create tag: ${cyan(tagName)}`);
-      } else {
-        try {
-          await $`git rev-parse ${tagName}`.quiet();
-          console.log(`Tag ${cyan(tagName)} already exists, skipping`);
-        } catch {
-          await $`git tag ${tagName}`;
-          console.log(`Created tag: ${cyan(tagName)}`);
-        }
-      }
-    }
-
-    if (createTags && pushTags) {
-      await $`git push origin ${branchName} --tags`;
-      console.log(`Tag pushed with ${module.name} branch`);
-    } else {
-      await $`git push origin ${branchName}`;
-      if (createTags) {
-        console.log(`Tag created locally for ${module.name}`);
-      }
-    }
-
-    // Create PR for this package
-    const packageDiagnostics = diagnostics.filter((d) =>
-      update.summary.commits.some((c) => c.hash === d.commit.hash)
-    );
-
-    const openedPr = await octoKit.request(
-      "POST /repos/{owner}/{repo}/pulls",
-      {
-        owner,
-        repo,
-        base: base,
-        head: branchName,
-        draft: false,
-        title: `chore(${module.name}): release ${update.to}`,
-        body: createPackagePrBody(
-          update,
-          packageDiagnostics,
-          githubRepo,
-          branchName,
-        ),
-      },
-    );
-
-    console.log(
-      `Created PR for ${module.name}: ${cyan(openedPr.data.html_url)}`,
-    );
-
-    // Switch back to base branch for next iteration
-    await $`git checkout ${base}`;
-  }
-}
-
-export async function createSinglePRWithPackageBreakdown({
-  updates,
-  modules,
-  diagnostics,
-  now,
+  importMapPath,
+  importMapJson,
+  newBranchName,
   gitUserName,
   gitUserEmail,
   githubToken,
   githubRepo,
   base,
+  gitTag,
+  individualTags,
   individualReleaseNotes,
-  releaseNotePath,
-  root,
-  dryRun,
-  createTags,
-  pushTags,
-  tagPrefix,
+  isSinglePackage,
 }: {
   updates: VersionUpdateResult[];
   modules: WorkspaceModule[];
   diagnostics: Diagnostic[];
   now: Date;
-  gitUserName: string;
-  gitUserEmail: string;
-  githubToken: string;
-  githubRepo: string;
-  base: string;
-  individualReleaseNotes: boolean;
+  dryRun: boolean | "git";
   releaseNotePath: string;
   root: string;
-  dryRun: boolean | "git";
-  createTags?: boolean;
-  tagPrefix?: string;
-  pushTags?: boolean;
+  importMapPath: string;
+  importMapJson: string;
+  newBranchName: string;
+  gitUserName?: string;
+  gitUserEmail?: string;
+  githubToken?: string;
+  githubRepo?: string;
+  base: string;
+  gitTag?: boolean;
+  individualTags: boolean;
+  individualReleaseNotes: boolean;
+  isSinglePackage: boolean;
 }) {
-  const isSinglePackage = modules.length === 1 &&
-    modules[0][pathProp].endsWith("deno.json");
+  // Get previous consolidated tag if we're using consolidated releases
+  let previousTag: string | undefined;
+  if (!individualTags && !isSinglePackage) {
+    previousTag = await getPreviousConsolidatedTag(true);
+  }
 
-  // Create individual release notes in package directories
+  // Create individual release notes in package directories if requested
   if (individualReleaseNotes) {
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
@@ -881,10 +732,9 @@ export async function createSinglePRWithPackageBreakdown({
         update,
         now,
         githubRepo,
-        tagPrefix,
-        "per-package",
-        true,
+        individualTags,
         isSinglePackage,
+        previousTag,
       );
 
       await ensureFile(packageReleaseNotePath);
@@ -897,164 +747,197 @@ export async function createSinglePRWithPackageBreakdown({
     }
   }
 
-  // Also create the main release note in workspace root
+  // Create main release note (either workspace-level or as consolidation)
   const releaseNote = createReleaseNote(
     updates,
     modules,
     now,
     githubRepo,
-    tagPrefix,
-    "per-package",
-    true,
+    individualTags,
+    previousTag,
   );
+
   const workspaceReleaseNotePath = join(root, releaseNotePath);
-  await ensureFile(workspaceReleaseNotePath);
-  const existingWorkspaceContent = await Deno.readTextFile(
-    workspaceReleaseNotePath,
-  ).catch(() => "");
-  await Deno.writeTextFile(
-    workspaceReleaseNotePath,
-    releaseNote + "\n" + existingWorkspaceContent,
-  );
 
-  const branchName = createReleaseBranchName(now);
+  if (dryRun === true) {
+    console.log();
+    console.log(cyan("The release note:"));
+    console.log(releaseNote);
 
-  if (dryRun === "git") {
-    console.log(cyan("Git dry run mode - skipping git operations"));
-    console.log(`Would create branch: ${branchName}`);
-    console.log(
-      `Would create PR: chore: release packages ${createReleaseTitle(now)}`,
-    );
-    return;
-  }
+    if (gitTag) {
+      console.log();
+      console.log(cyan("Tags that would be created:"));
 
-  console.log(`Creating single PR with per-package breakdown`);
-  await $`git checkout -b ${branchName}`;
-
-  const octoKit = new Octokit({ auth: githubToken });
-  const [owner, repo] = githubRepo.split("/");
-
-  await $`deno fmt ${workspaceReleaseNotePath}`;
-  await $`git add .`;
-  await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: release packages ${
-    createReleaseTitle(now)
-  }"`;
-
-  if (createTags) {
-    console.log(`${dryRun ? "Would create" : "Creating"} per-package tags...`);
-
-    for (const update of updates) {
-      const module = getModule(update.summary.module, modules)!;
-      const tagName = `${module.name}@${update.to}`;
-      if (dryRun) {
-        console.log(`Would create tag: ${cyan(tagName)}`);
-      } else {
-        try {
-          await $`git rev-parse ${tagName}`.quiet();
-          console.log(`Tag ${cyan(tagName)} already exists, skipping`);
-        } catch {
-          await $`git tag ${tagName}`;
-          console.log(`Created tag: ${cyan(tagName)}`);
+      if (individualTags && !isSinglePackage) {
+        // Individual package tags: @scope/package@1.2.3
+        for (const update of updates) {
+          const module = getModule(update.summary.module, modules)!;
+          console.log(`${module.name}@${update.to}`);
         }
+      } else if (isSinglePackage) {
+        // Single package semver tag: v1.2.3
+        for (const update of updates) {
+          console.log(`v${update.to}`);
+        }
+      } else {
+        // Consolidated release tag: release-YYYY.MM.DD
+        console.log(`release-${createReleaseTitle(now)}`);
       }
     }
-  }
 
-  if (createTags && pushTags) {
-    await $`git push origin ${branchName} --tags`;
-    console.log("Per-package tags pushed along with branch");
+    console.log();
+    console.log(cyan("Skip making a commit."));
+    console.log(cyan("Skip making a pull request."));
   } else {
-    await $`git push origin ${branchName}`;
-    if (createTags) {
-      console.log("Per-package tags created locally");
-    }
-  }
+    // Updates deno.json
+    await Deno.writeTextFile(importMapPath, importMapJson);
 
-  // Create PR
-  const openedPr = await octoKit.request(
-    "POST /repos/{owner}/{repo}/pulls",
-    {
-      owner,
-      repo,
-      base: base,
-      head: branchName,
-      draft: true,
-      title: `chore: release packages ${createReleaseTitle(now)}`,
-      body: createPerPackagePrBody(
-        updates,
-        diagnostics,
-        githubRepo,
-        branchName,
-      ),
-    },
-  );
+    // Prepend release notes
+    await ensureFile(workspaceReleaseNotePath);
+    await Deno.writeTextFile(
+      workspaceReleaseNotePath,
+      releaseNote + "\n" + await Deno.readTextFile(workspaceReleaseNotePath),
+    );
 
-  console.log("New pull request:", cyan(openedPr.data.html_url));
-}
+    await $`deno fmt ${workspaceReleaseNotePath}`;
 
-export async function createIndividualTags(
-  updates: VersionUpdateResult[],
-  modules: WorkspaceModule[],
-  _gitUserName: string,
-  _gitUserEmail: string,
-  dryRun: boolean | "git" = false, // Add dryRun parameter
-) {
-  if (dryRun === "git") {
-    console.log(cyan("Git dry run mode - skipping individual tag creation"));
-    for (const update of updates) {
-      const module = getModule(update.summary.module, modules)!;
-      const tagName = `${module.name}@${update.to}`;
-      console.log(`Would create tag: ${cyan(tagName)}`);
-    }
-    return;
-  }
+    if (dryRun === false) {
+      gitUserName ??= Deno.env.get("GIT_USER_NAME");
+      if (gitUserName === undefined) {
+        console.error("GIT_USER_NAME is not set.");
+        Deno.exit(1);
+      }
+      gitUserEmail ??= Deno.env.get("GIT_USER_EMAIL");
+      if (gitUserEmail === undefined) {
+        console.error("GIT_USER_EMAIL is not set.");
+        Deno.exit(1);
+      }
+      githubToken ??= Deno.env.get("GITHUB_TOKEN");
+      if (githubToken === undefined) {
+        console.error("GITHUB_TOKEN is not set.");
+        Deno.exit(1);
+      }
+      githubRepo ??= Deno.env.get("GITHUB_REPOSITORY");
+      if (githubRepo === undefined) {
+        console.error("GITHUB_REPOSITORY is not set.");
+        Deno.exit(1);
+      }
 
-  console.log("Creating individual tags for each package");
-
-  for (const update of updates) {
-    const module = getModule(update.summary.module, modules)!;
-    const tagName = `${module.name}@${update.to}`;
-    const tagMessage = `Release ${module.name} ${update.to}`;
-
-    if (dryRun === true) {
+      // Makes a commit
       console.log(
-        `Would create tag: ${cyan(tagName)} with message: "${tagMessage}"`,
+        `Creating a git commit in the new branch ${magenta(newBranchName)}.`,
       );
-      console.log(`Would push tag: ${cyan(tagName)}`);
-    } else {
-      console.log(`Creating tag: ${cyan(tagName)}`);
-      await $`git tag -a ${tagName} -m ${tagMessage}`;
-      await $`git push origin ${tagName}`;
+      await $`git checkout -b ${newBranchName}`;
+      await $`git add .`;
+      await $`git -c "user.name=${gitUserName}" -c "user.email=${gitUserEmail}" commit -m "chore: update versions"`;
+
+      if (gitTag) {
+        console.log("Creating version tags...");
+
+        if (individualTags && !isSinglePackage) {
+          // Create individual package tags: @scope/package@1.2.3
+          for (const update of updates) {
+            const module = getModule(update.summary.module, modules)!;
+            const tagName = `${module.name}@${update.to}`;
+
+            try {
+              // Check if tag already exists
+              await $`git rev-parse ${tagName}`.quiet();
+              console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+            } catch {
+              // Tag doesn't exist, create it
+              await $`git tag ${tagName}`;
+              console.log(`Created tag: ${cyan(tagName)}`);
+            }
+          }
+        } else if (isSinglePackage) {
+          // Single package: v1.2.3
+          for (const update of updates) {
+            const tagName = `v${update.to}`;
+
+            try {
+              await $`git rev-parse ${tagName}`.quiet();
+              console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+            } catch {
+              await $`git tag ${tagName}`;
+              console.log(`Created tag: ${cyan(tagName)}`);
+            }
+          }
+        } else {
+          // Consolidated release tag: release-YYYY.MM.DD
+          const tagName = `release-${createReleaseTitle(now)}`;
+
+          try {
+            await $`git rev-parse ${tagName}`.quiet();
+            console.log(`Tag ${cyan(tagName)} already exists, skipping`);
+          } catch {
+            await $`git tag ${tagName}`;
+            console.log(`Created tag: ${cyan(tagName)}`);
+          }
+        }
+      }
+
+      console.log(`Pushing the new branch ${magenta(newBranchName)}.`);
+      if (gitTag) {
+        // Push branch and tags together
+        await $`git push origin ${newBranchName} --tags`;
+        console.log("Tags pushed along with branch");
+      } else {
+        // Just push the branch
+        await $`git push origin ${newBranchName}`;
+      }
+
+      // Makes a PR
+      console.log(`Creating a pull request.`);
+      const octoKit = new Octokit({ auth: githubToken });
+      const [owner, repo] = githubRepo.split("/");
+      const openedPr = await octoKit.request(
+        "POST /repos/{owner}/{repo}/pulls",
+        {
+          owner,
+          repo,
+          base: base,
+          head: newBranchName,
+          draft: true,
+          title: `chore: release ${createReleaseTitle(now)}`,
+          body: createPrBody(
+            updates,
+            diagnostics,
+            githubRepo,
+            newBranchName,
+          ),
+        },
+      );
+      console.log("New pull request:", cyan(openedPr.data.html_url));
     }
   }
 }
-
 export function createPackageReleaseNote(
   update: VersionUpdateResult,
   date: Date,
   githubRepo?: string,
-  tagPrefix: string = "v",
-  publishMode: "workspace" | "per-package" = "workspace",
   individualTags: boolean = false,
   isSinglePackage: boolean = false,
+  previousTag?: string,
 ): string {
   const module = update.summary.module;
 
-  // Determine tag format for compare links based on publish mode and settings
+  // Determine tag format based on individualTags and isSinglePackage
   let fromTag: string, toTag: string;
 
-  if (isSinglePackage || (publishMode === "workspace" && !individualTags)) {
-    // Single package OR workspace mode (consolidated releases) use v1.2.3 format
-    fromTag = `${tagPrefix}${update.from}`;
-    toTag = `${tagPrefix}${update.to}`;
-  } else if (publishMode === "per-package" && individualTags) {
-    // Per-package mode with individual tags uses @scope/package@1.2.3 format
+  if (isSinglePackage) {
+    // Single package always uses semver format: v1.2.3
+    fromTag = `v${update.from}`;
+    toTag = `v${update.to}`;
+  } else if (individualTags) {
+    // Multi-package with individual tags: @scope/package@1.2.3
     fromTag = `${module}@${update.from}`;
     toTag = `${module}@${update.to}`;
   } else {
-    // Fallback to workspace format
-    fromTag = `${tagPrefix}${update.from}`;
-    toTag = `${tagPrefix}${update.to}`;
+    // Multi-package with consolidated tags: release-YYYY.MM.DD
+    const currentTag = `release-${createReleaseTitle(date)}`;
+    fromTag = previousTag || "HEAD~1";
+    toTag = currentTag;
   }
 
   // Create version with compare link if GitHub repo is available
@@ -1075,109 +958,6 @@ export function createPackageReleaseNote(
   }).join("");
 
   return heading + commits;
-}
-
-export function createPackagePrBody(
-  update: VersionUpdateResult,
-  diagnostics: Diagnostic[],
-  githubRepo: string,
-  releaseBranch: string,
-): string {
-  const module = update.summary.module;
-
-  return `Release ${module} ${update.to}
-
-**Changes:**
-${update.summary.commits.map((c) => `- ${c.subject}`).join("\n")}
-
-**Version Info:**
-- From: ${update.from}
-- To: ${update.to}
-- Type: ${update.diff}
-
-${
-    diagnostics.length > 0
-      ? `
-**Diagnostics:**
-${
-        diagnostics.map((d) =>
-          `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`
-        ).join("\n")
-      }
-`
-      : ""
-  }
-
----
-
-To make edits to this PR:
-
-\`\`\`sh
-git fetch upstream ${releaseBranch} && git checkout -b ${releaseBranch} upstream/${releaseBranch}
-\`\`\`
-`;
-}
-
-export function createPerPackagePrBody(
-  updates: VersionUpdateResult[],
-  diagnostics: Diagnostic[],
-  githubRepo: string,
-  releaseBranch: string,
-): string {
-  const table = updates.map((u) =>
-    "|" + [u.summary.module, u.from, u.to, u.diff].join("|") + "|"
-  ).join("\n");
-
-  const packageSections = updates.map((update) => {
-    return `### ${update.summary.module} ${update.to}
-
-${update.summary.commits.map((c) => `- ${c.subject}`).join("\n")}
-`;
-  }).join("\n");
-
-  return `Release multiple packages:
-
-| Package | From | To | Type |
-|---------|------|----|----- |
-${table}
-
-## Package Details
-
-${packageSections}
-
-${
-    diagnostics.length > 0
-      ? `
-## Diagnostics
-
-${
-        diagnostics.map((d) =>
-          `- [${d.commit.subject}](/${githubRepo}/commit/${d.commit.hash}): ${d.reason}`
-        ).join("\n")
-      }
-`
-      : ""
-  }
-
----
-
-To make edits to this PR:
-
-\`\`\`sh
-git fetch upstream ${releaseBranch} && git checkout -b ${releaseBranch} upstream/${releaseBranch}
-\`\`\`
-`;
-}
-
-export function createPackageReleaseBranchName(
-  packageName: string,
-  version: string,
-  date: Date,
-): string {
-  const safeName = packageName.replace("@", "").replace("/", "-");
-  const dateStr = date.toISOString().replace("T", "-").replaceAll(":", "-")
-    .replace(/\..+/, "");
-  return `release-${safeName}-${version}-${dateStr}`;
 }
 
 export function getPackageDir(module: WorkspaceModule, root: string): string {
@@ -1384,16 +1164,13 @@ export async function getCurrentGitBranch(): Promise<string> {
 }
 
 export async function getSmartStartTag(
-  publishMode: "workspace" | "per-package",
+  individualTags: boolean,
   modules: WorkspaceModule[],
-  tagPrefix: string,
+  isSinglePackage: boolean,
   quiet: boolean = false,
 ): Promise<string> {
-  const isSinglePackage = modules.length === 1 &&
-    modules[0][pathProp].endsWith("deno.json");
-
   try {
-    if (publishMode === "per-package" && !isSinglePackage) {
+    if (individualTags && !isSinglePackage) {
       // Per-package workspace: find most recent tag across all packages
       if (!quiet) {
         console.log("Detecting per-package workspace tags...");
@@ -1444,9 +1221,9 @@ export async function getSmartStartTag(
         return mostRecentTag;
       }
     } else if (isSinglePackage) {
-      // Single package: look for version tags with specified prefix
+      // Single package: look for version tags with v prefix
       try {
-        const versionPattern = `${tagPrefix}*`;
+        const versionPattern = `v*`;
         const latestTag =
           await $`git describe --tags --abbrev=0 --match=${versionPattern}`
             .text();
@@ -1458,7 +1235,7 @@ export async function getSmartStartTag(
         return latestTag.trim();
       } catch {
         if (!quiet) {
-          console.log(`No ${tagPrefix}* tags found, trying fallback...`);
+          console.log(`No v* tags found, trying fallback...`);
         }
       }
     }
@@ -1480,5 +1257,34 @@ export async function getSmartStartTag(
     } catch {
       return "";
     }
+  }
+}
+
+export async function getPreviousConsolidatedTag(
+  quiet: boolean = false,
+): Promise<string | undefined> {
+  try {
+    // Get all tags matching the consolidated pattern, sorted by version (date-based)
+    const tags = await $`git tag -l "release-*" --sort=-version:refname`.text();
+    const tagList = tags.trim().split("\n").filter(Boolean);
+
+    if (tagList.length > 0) {
+      // Return the most recent tag (which should be the previous release)
+      const previousTag = tagList[0];
+      if (!quiet) {
+        console.log(`Found previous consolidated tag: ${previousTag}`);
+      }
+      return previousTag;
+    }
+
+    if (!quiet) {
+      console.log("No previous consolidated tags found");
+    }
+    return undefined;
+  } catch (error) {
+    if (!quiet) {
+      console.warn("Failed to get previous consolidated tag:", error);
+    }
+    return undefined;
   }
 }

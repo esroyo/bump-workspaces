@@ -1,5 +1,4 @@
 // Copyright 2024 the Deno authors. All rights reserved. MIT license.
-
 import { assertSnapshot } from "@std/testing/snapshot";
 import { assertSpyCallArg, spy, stub } from "@std/testing/mock";
 import { copy, exists } from "@std/fs";
@@ -146,7 +145,7 @@ Deno.test("bumpWorkspaces() handles no version bumps scenario", async () => {
   });
 });
 
-Deno.test("bumpWorkspaces() per-package mode with dry run", async (t) => {
+Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run", async (t) => {
   await withGitContextForTesting(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
@@ -161,40 +160,23 @@ Deno.test("bumpWorkspaces() per-package mode with dry run", async (t) => {
         base: "origin/base-branch-for-testing",
         start: "start-tag-for-testing",
         root: dir,
-        releaseNotePath: "CHANGELOG.md",
-        publishMode: "per-package",
-        individualPRs: true,
+        releaseNotePath: "CHANGELOG.md", // Explicit override from default
         individualTags: true,
         individualReleaseNotes: true,
-        _quiet: true, // suppress extra logging
+        _quiet: false,
       });
 
-      // Verify that individual PR creation was logged
+      // Verify that per-package mode was activated
       const logs = consoleSpy.calls.map((call) => call.args.join(" "));
 
       // Check that per-package mode was activated
       const perPackageLog = logs.find((log) =>
-        log.includes("Publishing per-package mode")
+        log.includes("Using per-package strategy")
       );
       assertEquals(
-        perPackageLog?.includes("Publishing per-package mode"),
+        perPackageLog?.includes("Using per-package strategy"),
         true,
       );
-
-      // Check that package-specific information is shown
-      const packageLogs = logs.filter((log) =>
-        log.includes("Package: @scope/")
-      );
-      assertEquals(packageLogs.length > 0, true);
-
-      // Verify dry run mentions what would be done
-      const tagLogs = logs.filter((log) => log.includes("Would create tag:"));
-      assertEquals(tagLogs.length > 0, true);
-
-      const prLogs = logs.filter((log) =>
-        log.includes("Would create individual PR")
-      );
-      assertEquals(prLogs.length > 0, true);
 
       // Normalize paths in logs for snapshot consistency
       const normalizedLogs = logs.map((log) => {
@@ -214,7 +196,7 @@ Deno.test("bumpWorkspaces() per-package mode with dry run", async (t) => {
   });
 });
 
-Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
+Deno.test("bumpWorkspaces() individual release notes with git dry run", async (t) => {
   await withGitContextForTesting(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
@@ -225,8 +207,6 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
       base: "origin/base-branch-for-testing",
       start: "start-tag-for-testing",
       root: dir,
-      publishMode: "per-package",
-      individualPRs: false, // Single PR mode
       individualTags: false,
       individualReleaseNotes: true,
     });
@@ -236,7 +216,7 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
     let releaseNoteCount = 0;
 
     for (const packageDir of packageDirs) {
-      const changelogPath = join(dir, packageDir, "CHANGELOG.md");
+      const changelogPath = join(dir, packageDir, "Releases.md");
       try {
         const content = await Deno.readTextFile(changelogPath);
         if (content.length > 0) {
@@ -248,7 +228,7 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
     }
 
     // Also check workspace-level changelog
-    const workspaceChangelogPath = join(dir, "CHANGELOG.md");
+    const workspaceChangelogPath = join(dir, "Releases.md");
     const workspaceContent = await Deno.readTextFile(workspaceChangelogPath);
 
     assertEquals(
@@ -264,7 +244,7 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
 
     // Verify content of one package changelog if it exists
     for (const packageDir of packageDirs) {
-      const changelogPath = join(dir, packageDir, "CHANGELOG.md");
+      const changelogPath = join(dir, packageDir, "Releases.md");
       try {
         const content = await Deno.readTextFile(changelogPath);
         if (content.length > 0) {
@@ -278,57 +258,6 @@ Deno.test("bumpWorkspaces() per-package mode with git dry run", async (t) => {
       } catch {
         // Continue to next package
       }
-    }
-  });
-});
-
-Deno.test("bumpWorkspaces() - per-package mode with single PR", async () => {
-  await withGitContextForTesting(async () => {
-    const dir = await Deno.makeTempDir();
-    await copy("testdata/basic", dir, { overwrite: true });
-
-    const consoleSpy = spy(console, "log");
-
-    try {
-      await bumpWorkspaces({
-        dryRun: "git",
-        githubRepo: "denoland/deno_std",
-        githubToken: "1234567890",
-        base: "origin/base-branch-for-testing",
-        start: "start-tag-for-testing",
-        root: dir,
-        publishMode: "per-package",
-        individualPRs: false, // Single PR, not individual
-        individualTags: true,
-        individualReleaseNotes: true,
-        _quiet: false,
-      });
-
-      // Verify it used single PR mode, not individual PRs
-      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
-      const hasSinglePRLog = logCalls.some((log) =>
-        log.includes("Creating single PR") ||
-        log.includes("per-package breakdown") ||
-        log.includes("Would create branch:")
-      );
-      assertEquals(
-        hasSinglePRLog,
-        true,
-        "Should log single PR creation with per-package breakdown",
-      );
-
-      // Should NOT have individual PR logs
-      const hasIndividualPRLog = logCalls.some((log) =>
-        log.includes("Creating individual PR") ||
-        log.includes("individual PR creation")
-      );
-      assertEquals(
-        hasIndividualPRLog,
-        false,
-        "Should not create individual PRs when individualPRs=false",
-      );
-    } finally {
-      consoleSpy.restore();
     }
   });
 });
@@ -408,45 +337,7 @@ Deno.test("bumpWorkspaces() handles missing environment variables", async () => 
   });
 });
 
-Deno.test("createIndividualPRs() with dry run mode", async () => {
-  await withGitContextForTesting(async () => {
-    const dir = await Deno.makeTempDir();
-    await copy("testdata/basic", dir, { overwrite: true });
-
-    const consoleSpy = spy(console, "log");
-
-    try {
-      await bumpWorkspaces({
-        dryRun: "git", // This should exercise createIndividualPRs with git dry run
-        githubRepo: "denoland/deno_std",
-        githubToken: "1234567890",
-        base: "origin/base-branch-for-testing",
-        start: "start-tag-for-testing",
-        root: dir,
-        publishMode: "per-package",
-        individualPRs: true, // This triggers createIndividualPRs
-        _quiet: false, // Don't suppress logging
-      });
-
-      // Verify that individual PR creation was logged
-      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
-      const hasIndividualPRLog = logCalls.some((log) =>
-        log.includes("Git dry run mode - skipping individual PR creation") ||
-        log.includes("Would create branch:") ||
-        log.includes("Would create PR:")
-      );
-      assertEquals(
-        hasIndividualPRLog,
-        true,
-        "Should log individual PR dry run actions",
-      );
-    } finally {
-      consoleSpy.restore();
-    }
-  });
-});
-
-Deno.test("createIndividualTags() functionality", async () => {
+Deno.test("bumpWorkspaces() with consolidated tags (individualTags=false)", async () => {
   await withGitContextForTesting(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
@@ -461,26 +352,201 @@ Deno.test("createIndividualTags() functionality", async () => {
         base: "origin/base-branch-for-testing",
         start: "start-tag-for-testing",
         root: dir,
-        publishMode: "per-package",
-        individualTags: true, // This should exercise createIndividualTags
-        createTags: true,
+        individualTags: false, // This should create consolidated tags
+        gitTag: true,
         _quiet: false,
       });
 
-      // Verify createIndividualTags behavior through console output
+      // Verify consolidated tag creation behavior through console output
       const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
 
-      // Should log about creating individual tags
-      const hasTagCreationLog = logCalls.some((log) =>
-        log.includes("Creating individual tags") ||
-        log.includes("Creating tag:") ||
-        log.includes("Would create tag:")
+      // Should log about creating consolidated tags (not individual package tags)
+      const hasConsolidatedTagLog = logCalls.some((log) =>
+        log.match(/^release-\d+\.\d+\.\d+$/)
       );
 
       assertEquals(
-        hasTagCreationLog,
+        hasConsolidatedTagLog,
         true,
-        "Should log individual tag creation",
+        "Should log consolidated tag creation (release-YYYY.MM.DD format)",
+      );
+
+      // Should NOT have individual package tag logs
+      const hasIndividualTagLog = logCalls.some((log) =>
+        log.match(/^@scope\/[^@ ]+@\d+\.\d+\.\d+$/)
+      );
+
+      assertEquals(
+        hasIndividualTagLog,
+        false,
+        "Should not create individual package tags when individualTags=false",
+      );
+    } finally {
+      consoleSpy.restore();
+    }
+  });
+});
+
+Deno.test("bumpWorkspaces() with individual tags (individualTags=true)", async () => {
+  await withGitContextForTesting(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        githubRepo: "denoland/deno_std",
+        githubToken: "1234567890",
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        individualTags: true, // This should create individual package tags
+        gitTag: true,
+        _quiet: false,
+      });
+
+      // Verify individual tag creation behavior through console output
+      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
+
+      // Should log about creating individual package tags
+      const hasIndividualTagLog = logCalls.some((log) =>
+        log.includes("@scope/") && log.includes("@")
+      );
+
+      assertEquals(
+        hasIndividualTagLog,
+        true,
+        "Should log individual package tag creation (@scope/package@version format)",
+      );
+
+      // Should NOT have consolidated tag logs
+      const hasConsolidatedTagLog = logCalls.some((log) =>
+        log.includes("release-") && !log.includes("@scope/")
+      );
+
+      assertEquals(
+        hasConsolidatedTagLog,
+        false,
+        "Should not create consolidated tags when individualTags=true",
+      );
+    } finally {
+      consoleSpy.restore();
+    }
+  });
+});
+
+Deno.test("bumpWorkspaces() with gitTag=false (default)", async () => {
+  await withGitContextForTesting(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        githubRepo: "denoland/deno_std",
+        githubToken: "1234567890",
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        gitTag: false, // Explicitly disable tag creation
+        _quiet: false,
+      });
+
+      // Verify no tag creation logs
+      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
+
+      // Should NOT have any tag-related logs
+      const hasTagLog = logCalls.some((log) =>
+        log.includes("Tags that would be created") ||
+        log.includes("Created tag") ||
+        log.includes("Tag")
+      );
+
+      assertEquals(
+        hasTagLog,
+        false,
+        "Should not log any tag creation when gitTag=false",
+      );
+    } finally {
+      consoleSpy.restore();
+    }
+  });
+});
+
+Deno.test("bumpWorkspaces() single package repo handling", async () => {
+  await withGitContextForTesting(async () => {
+    // Create a temporary single-package repo
+    const dir = await Deno.makeTempDir();
+    const singlePackageConfig = {
+      name: "@test/single-package",
+      version: "1.0.0",
+      exports: "./mod.ts",
+    };
+
+    await Deno.writeTextFile(
+      join(dir, "deno.json"),
+      JSON.stringify(singlePackageConfig, null, 2),
+    );
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        _quiet: false,
+      });
+
+      // Verify single package detection
+      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
+      const hasSinglePackageLog = logCalls.some((log) =>
+        log.includes("Processing single package")
+      );
+
+      assertEquals(
+        hasSinglePackageLog,
+        true,
+        "Should detect and log single package mode",
+      );
+    } finally {
+      consoleSpy.restore();
+      await Deno.remove(dir, { recursive: true });
+    }
+  });
+});
+
+Deno.test("bumpWorkspaces() workspace repo handling", async () => {
+  await withGitContextForTesting(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        _quiet: false,
+      });
+
+      // Verify workspace detection
+      const logCalls = consoleSpy.calls.map((call) => call.args.join(" "));
+      const hasWorkspaceLog = logCalls.some((log) =>
+        log.includes("Processing workspace with") && log.includes("packages")
+      );
+
+      assertEquals(
+        hasWorkspaceLog,
+        true,
+        "Should detect and log workspace mode",
       );
     } finally {
       consoleSpy.restore();

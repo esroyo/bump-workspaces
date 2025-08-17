@@ -25,7 +25,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run workspaces version bump
-        run: deno run -A jsr:@esroyo/deno-bump-workspaces/cli --release-note-path="CHANGELOG.md"
+        run: deno run -A jsr:@esroyo/deno-bump-workspaces/cli --release-note-path="CHANGELOG.md" --git-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_USER_NAME: ${{ github.actor }}

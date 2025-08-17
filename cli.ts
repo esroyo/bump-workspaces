@@ -31,18 +31,26 @@ function argToBoolean(
  * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --import-map ./import_map.json
  * ```
  *
- * For per-package publishing mode:
+ * Different strategies:
  *
  * ```sh
- * # Per-package mode (individual tags and release notes by default)
- * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --publish-mode per-package
+ * # Default: Workspace strategy (consolidated tags + consolidated release notes)
+ * deno run -A jsr:@esroyo/deno-bump-workspaces/cli
  *
- * # Per-package mode with individual PRs
- * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --publish-mode per-package --individual-prs
+ * # Per-package strategy (individual tags + individual release notes)
+ * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --individual-tags --individual-release-notes
  *
- * # Per-package mode but opt out of individual release notes
- * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --publish-mode per-package --no-individual-release-notes
+ * # Per-package strategy with custom release note filename
+ * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --individual-tags --individual-release-notes --release-note-path CHANGELOG.md
+ *
+ * # With automatic tag creation (opt-in)
+ * deno run -A jsr:@esroyo/deno-bump-workspaces/cli --git-tag
  * ```
+ *
+ * Tag formats are standardized:
+ * - Single packages: v1.2.3
+ * - Multi-package individual tags: @scope/package@1.2.3
+ * - Multi-package consolidated tags: release-YYYY.MM.DD
  *
  * @module
  */
@@ -50,65 +58,32 @@ function argToBoolean(
 if (import.meta.main) {
   const args = parseArgs(Deno.args, {
     string: [
-      "create-tags",
       "import-map",
-      "individual-prs",
       "individual-tags",
       "individual-release-notes",
-      "push-tags",
-      "publish-mode",
       "release-note-path",
-      "tag-prefix",
+      "git-tag",
     ],
     boolean: [
       "dry-run",
     ],
     negatable: [
-      "create-tags",
-      "individual-prs",
       "individual-tags",
       "individual-release-notes",
-      "push-tags",
+      "git-tag",
     ],
   });
-
-  // Validate publish mode
-  const publishMode = args["publish-mode"];
-  if (publishMode && !["workspace", "per-package"].includes(publishMode)) {
-    console.error(
-      "Error: --publish-mode must be either 'workspace' or 'per-package'",
-    );
-    Deno.exit(1);
-  }
-
-  // Warn if per-package options are used without per-package mode
-  if (
-    publishMode !== "per-package" &&
-    (args["individual-prs"] || args["individual-tags"] ||
-      args["individual-release-notes"])
-  ) {
-    console.warn(
-      "Warning: individual-* options are only effective when --publish-mode is 'per-package'",
-    );
-  }
-
-  // Set defaults based on publish mode
-  const isPerPackageMode = publishMode === "per-package";
 
   await bumpWorkspaces({
     dryRun: args["dry-run"],
     importMap: args["import-map"],
     releaseNotePath: args["release-note-path"],
-    publishMode: publishMode as "workspace" | "per-package" | undefined,
-    // Use CLI args if provided, otherwise use mode-appropriate defaults
-    individualPRs: argToBoolean(args["individual-prs"], false),
-    individualTags: argToBoolean(args["individual-tags"], isPerPackageMode),
+    // Use explicit flag values or defaults
+    individualTags: argToBoolean(args["individual-tags"], false),
     individualReleaseNotes: argToBoolean(
       args["individual-release-notes"],
-      isPerPackageMode,
+      false,
     ),
-    createTags: argToBoolean(args["create-tags"], true),
-    tagPrefix: args["tag-prefix"] ?? "v",
-    pushTags: argToBoolean(args["push-tags"], true),
+    gitTag: argToBoolean(args["git-tag"], false), // Default to false for compatibility
   });
 }
