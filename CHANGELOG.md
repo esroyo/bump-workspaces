@@ -1,3 +1,10 @@
+### 2025.08.17
+
+#### @esroyo/deno-bump-workspaces 0.3.0 (minor)
+
+- feat!: remove publishMode and keep compat with upstream
+- feat: add github links on generated notes
+
 ### 2025.08.15
 
 #### @esroyo/deno-bump-workspaces 0.2.6 (patch)
