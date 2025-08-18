@@ -600,6 +600,53 @@ snapshot[`createReleaseNote() with GitHub links - individual tags 1`] = `
 }
 `;
 
+snapshot[`createSinglePackageReleaseNote() format 1`] = `
+{
+  content: "### 1.1.0 (1970.01.01)
+
+- feat: add new feature
+- fix: fix critical bug
+",
+  type: "single-package-no-links",
+}
+`;
+
+snapshot[`createSinglePackageReleaseNote() format 2`] = `
+{
+  content: "### [1.1.0](https://github.com/owner/repo/compare/v1.0.0...v1.1.0) (1970.01.01)
+
+- feat: add new feature ([abc1234](https://github.com/owner/repo/commit/abc1234567890abcdef1234567890abcdef123456))
+- fix: fix critical bug ([def4567](https://github.com/owner/repo/commit/def4567890abcdef1234567890abcdef12345678))
+",
+  type: "single-package-with-links",
+}
+`;
+
+snapshot[`createSinglePackageReleaseNote() format 3`] = `
+{
+  content: "### 1.1.0 (1970.01.01)
+
+- feat: add new feature ([abc1234](https://github.com/owner/repo/commit/abc1234567890abcdef1234567890abcdef123456))
+- fix: fix critical bug ([def4567](https://github.com/owner/repo/commit/def4567890abcdef1234567890abcdef12345678))
+",
+  type: "single-package-no-previous-tag",
+}
+`;
+
+snapshot[`createReleaseNote() vs createSinglePackageReleaseNote() format differences 1`] = `
+{
+  multiPackage: "### 1970.01.01
+
+#### @test/package 1.1.0 (minor) 
+- feat: add new feature
+",
+  singlePackage: "### 1.1.0 (1970.01.01)
+
+- feat: add new feature
+",
+}
+`;
+
 snapshot[`createPackageReleaseNote() with different tag modes 1`] = `
 {
   content: "### @scope/test-package [1.1.0](https://github.com/owner/repo/compare/@scope/test-package@1.0.0...@scope/test-package@1.1.0) (1970.01.01)

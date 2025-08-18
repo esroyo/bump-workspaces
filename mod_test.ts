@@ -190,7 +190,7 @@ Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run"
         ).replace(
           /^### \d+\.\d+\.\d+$/gm,
           "### YYYY.MM.DD",
-        )
+        );
       });
       await assertSnapshot(t, normalizedLogs);
     } finally {
@@ -225,24 +225,22 @@ Deno.test("bumpWorkspaces() individual release notes with git dry run", async (t
         if (content.length > 0) {
           releaseNoteCount++;
         }
+
+        // Verify individual notes have proper format with full module names
+        assertEquals(
+          content.includes(`### @scope/${packageDir}`),
+          true,
+          `Individual note should include full module name for ${packageDir}`,
+        );
       } catch {
         // File doesn't exist, which is fine if package wasn't updated
       }
     }
 
-    // Also check workspace-level changelog
-    const workspaceChangelogPath = join(dir, "Releases.md");
-    const workspaceContent = await Deno.readTextFile(workspaceChangelogPath);
-
     assertEquals(
       releaseNoteCount > 0,
       true,
       "Should have created package-level changelogs",
-    );
-    assertEquals(
-      workspaceContent.length > 0,
-      true,
-      "Should have created workspace-level changelog",
     );
 
     // Verify content of one package changelog if it exists
@@ -261,6 +259,382 @@ Deno.test("bumpWorkspaces() individual release notes with git dry run", async (t
       } catch {
         // Continue to next package
       }
+    }
+  }, { quiet: true });
+});
+
+Deno.test("bumpWorkspaces() single-package release note format", async (t) => {
+  await withGitContext(async () => {
+    // Create a temporary single-package repo
+    const dir = await Deno.makeTempDir();
+    const singlePackageConfig = {
+      name: "@test/single-package",
+      version: "1.0.0",
+      exports: "./mod.ts",
+    };
+
+    await Deno.writeTextFile(
+      join(dir, "deno.json"),
+      JSON.stringify(singlePackageConfig, null, 2),
+    );
+
+    await bumpWorkspaces({
+      dryRun: "git",
+      githubRepo: "owner/repo",
+      githubToken: "1234567890",
+      base: "origin/base-branch-for-testing",
+      start: "start-tag-for-testing",
+      root: dir,
+    });
+
+    // Check that release note was created at root
+    const releaseNotePath = join(dir, "Releases.md");
+    const releaseNoteExists = await exists(releaseNotePath);
+    assertEquals(releaseNoteExists, true, "Should create release note at root");
+
+    if (releaseNoteExists) {
+      const content = await Deno.readTextFile(releaseNotePath);
+
+      // Should use simple format without module name redundancy
+      assertEquals(
+        content.includes("### 1.0.1"), // Simple version heading
+        true,
+        "Should use simple version format for single package",
+      );
+
+      // Should NOT include module name in heading
+      assertEquals(
+        content.includes("#### @test/single-package"),
+        false,
+        "Should not include redundant module name in single-package format",
+      );
+
+      // Normalize for snapshot
+      const normalizedContent = content.replace(
+        /\d{4}\.\d{2}\.\d{2}/g,
+        "YYYY.MM.DD",
+      );
+      await assertSnapshot(t, {
+        type: "single-package",
+        content: normalizedContent,
+      });
+    }
+  }, { quiet: true });
+});
+
+Deno.test("bumpWorkspaces() individual release notes strategy (no workspace note)", async () => {
+  await withGitContext(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    await bumpWorkspaces({
+      dryRun: "git",
+      githubRepo: "denoland/deno_std",
+      githubToken: "1234567890",
+      base: "origin/base-branch-for-testing",
+      start: "start-tag-for-testing",
+      root: dir,
+      individualReleaseNotes: true,
+    });
+
+    // Check that NO workspace-level release note was created
+    const workspaceReleaseNotePath = join(dir, "Releases.md");
+    const workspaceNoteExists = await exists(workspaceReleaseNotePath);
+    assertEquals(
+      workspaceNoteExists,
+      false,
+      "Should NOT create workspace release note when using individual strategy",
+    );
+
+    // Check that individual release notes were created
+    const packageDirs = ["foo", "bar", "baz", "qux", "quux"];
+    let individualNotesCount = 0;
+
+    for (const packageDir of packageDirs) {
+      const packageReleaseNotePath = join(dir, packageDir, "Releases.md");
+      try {
+        const content = await Deno.readTextFile(packageReleaseNotePath);
+        if (content.length > 0) {
+          individualNotesCount++;
+
+          // Verify individual note format includes module name
+          assertEquals(
+            content.includes(`### @scope/${packageDir}`),
+            true,
+            `Individual note should include module name for ${packageDir}`,
+          );
+        }
+      } catch {
+        // File doesn't exist, which is fine if package wasn't updated
+      }
+    }
+
+    assertEquals(
+      individualNotesCount > 0,
+      true,
+      "Should have created individual release notes",
+    );
+  }, { quiet: true });
+});
+
+Deno.test("bumpWorkspaces() workspace strategy (consolidated note only)", async () => {
+  await withGitContext(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    await bumpWorkspaces({
+      dryRun: "git",
+      githubRepo: "denoland/deno_std",
+      githubToken: "1234567890",
+      base: "origin/base-branch-for-testing",
+      start: "start-tag-for-testing",
+      root: dir,
+      individualReleaseNotes: false, // Explicit default
+    });
+
+    // Check that workspace-level release note was created
+    const workspaceReleaseNotePath = join(dir, "Releases.md");
+    const workspaceNoteExists = await exists(workspaceReleaseNotePath);
+    assertEquals(
+      workspaceNoteExists,
+      true,
+      "Should create workspace release note for default strategy",
+    );
+
+    // Check that NO individual release notes were created
+    const packageDirs = ["foo", "bar", "baz", "qux", "quux"];
+
+    for (const packageDir of packageDirs) {
+      const packageReleaseNotePath = join(dir, packageDir, "Releases.md");
+      const individualNoteExists = await exists(packageReleaseNotePath);
+      assertEquals(
+        individualNoteExists,
+        false,
+        `Should NOT create individual release note for ${packageDir} in workspace strategy`,
+      );
+    }
+
+    // Verify workspace note format includes module names in headers
+    const content = await Deno.readTextFile(workspaceReleaseNotePath);
+    assertEquals(
+      content.includes("#### @scope/"),
+      true,
+      "Workspace note should include module names in headers",
+    );
+  }, { quiet: true });
+});
+
+Deno.test(
+  "bumpWorkspaces() dry-run shows individual release notes preview",
+  async (t) => {
+    await withGitContext(async () => {
+      const dir = await Deno.makeTempDir();
+      await copy("testdata/basic", dir, { overwrite: true });
+
+      const consoleSpy = spy(console, "log");
+
+      try {
+        await bumpWorkspaces({
+          dryRun: true, // Key: this is dry-run
+          githubRepo: "denoland/deno_std",
+          githubToken: "1234567890",
+          base: "origin/base-branch-for-testing",
+          start: "start-tag-for-testing",
+          root: dir,
+          individualReleaseNotes: true, // Key: individual notes requested
+          _quiet: false, // Don't suppress console output
+        });
+
+        const logs = consoleSpy.calls.map((call) => call.args.join(" "));
+
+        // Should show individual release notes preview
+        const hasIndividualNotesHeader = logs.some((log) =>
+          log.includes("Individual release notes that would be created")
+        );
+        assertEquals(
+          hasIndividualNotesHeader,
+          true,
+          "Should show header for individual release notes preview",
+        );
+
+        // Should show file paths for each package
+        const hasPackageFilePaths = logs.some((log) =>
+          log.includes("📄") && log.includes("Releases.md")
+        );
+        assertEquals(
+          hasPackageFilePaths,
+          true,
+          "Should show file paths for individual release notes",
+        );
+
+        // Should show release note content (with package names)
+        const hasPackageContent = logs.some((log) => log.includes("### @scope/") // Package release notes have module names
+        );
+        assertEquals(
+          hasPackageContent,
+          true,
+          "Should show individual release note content",
+        );
+
+        // Should explicitly state no workspace note
+        const hasNoWorkspaceNote = logs.some((log) =>
+          log.includes("No workspace-level release note would be created")
+        );
+        assertEquals(
+          hasNoWorkspaceNote,
+          true,
+          "Should state that no workspace note will be created",
+        );
+
+        // Should NOT show workspace release note content
+        const hasWorkspaceReleaseNote = logs.some((log) =>
+          log.includes("The release note:") // This is the workspace note header
+        );
+        assertEquals(
+          hasWorkspaceReleaseNote,
+          false,
+          "Should NOT show workspace release note when using individual strategy",
+        );
+
+        // Normalize paths and snapshot the preview output
+        const normalizedLogs = logs.map((log) => {
+          return log.replace(
+            new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+            "/tmp/test-dir",
+          ).replace(
+            /\d{4}\.\d{2}\.\d{2}/g,
+            "YYYY.MM.DD",
+          );
+        });
+
+        await assertSnapshot(t, {
+          type: "dry-run-individual-notes-preview",
+          logs: normalizedLogs,
+        });
+      } finally {
+        consoleSpy.restore();
+      }
+    }, { quiet: true });
+  },
+);
+
+Deno.test("bumpWorkspaces() dry-run shows single-package release note preview", async (_t) => {
+  await withGitContext(async () => {
+    // Create a temporary single-package repo
+    const dir = await Deno.makeTempDir();
+    const singlePackageConfig = {
+      name: "@test/single-package",
+      version: "1.0.0",
+      exports: "./mod.ts",
+    };
+
+    await Deno.writeTextFile(
+      join(dir, "deno.json"),
+      JSON.stringify(singlePackageConfig, null, 2),
+    );
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        githubRepo: "owner/repo",
+        githubToken: "1234567890",
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        individualReleaseNotes: true, // This should be ignored for single-package
+        _quiet: false,
+      });
+
+      const logs = consoleSpy.calls.map((call) => call.args.join(" "));
+
+      // Should show "The release note:" header (single note)
+      const hasReleaseNoteHeader = logs.some((log) =>
+        log.includes("The release note:")
+      );
+      assertEquals(
+        hasReleaseNoteHeader,
+        true,
+        "Should show single release note header for single-package repo",
+      );
+
+      // Should show simple format (version without module name)
+      const hasSimpleFormat = logs.some((log) =>
+        log.includes("### 1.0.1") && !log.includes("#### @test/single-package")
+      );
+      assertEquals(
+        hasSimpleFormat,
+        true,
+        "Should show simple format without redundant module name",
+      );
+
+      // Should NOT show individual notes messaging
+      const hasIndividualNotesHeader = logs.some((log) =>
+        log.includes("Individual release notes that would be created")
+      );
+      assertEquals(
+        hasIndividualNotesHeader,
+        false,
+        "Should NOT show individual notes messaging for single-package repo",
+      );
+    } finally {
+      consoleSpy.restore();
+    }
+  }, { quiet: true });
+});
+
+Deno.test("bumpWorkspaces() dry-run shows workspace release note preview", async (_t) => {
+  await withGitContext(async () => {
+    const dir = await Deno.makeTempDir();
+    await copy("testdata/basic", dir, { overwrite: true });
+
+    const consoleSpy = spy(console, "log");
+
+    try {
+      await bumpWorkspaces({
+        dryRun: true,
+        githubRepo: "denoland/deno_std",
+        githubToken: "1234567890",
+        base: "origin/base-branch-for-testing",
+        start: "start-tag-for-testing",
+        root: dir,
+        individualReleaseNotes: false, // Workspace strategy
+        _quiet: false,
+      });
+
+      const logs = consoleSpy.calls.map((call) => call.args.join(" "));
+
+      // Should show "The release note:" header
+      const hasReleaseNoteHeader = logs.some((log) =>
+        log.includes("The release note:")
+      );
+      assertEquals(
+        hasReleaseNoteHeader,
+        true,
+        "Should show workspace release note header",
+      );
+
+      // Should show workspace format (with module names in headers)
+      const hasWorkspaceFormat = logs.some((log) => log.includes("#### @scope/") // Workspace notes have module names in headers
+      );
+      assertEquals(
+        hasWorkspaceFormat,
+        true,
+        "Should show workspace format with module names in headers",
+      );
+
+      // Should NOT show individual notes messaging
+      const hasIndividualNotesHeader = logs.some((log) =>
+        log.includes("Individual release notes that would be created")
+      );
+      assertEquals(
+        hasIndividualNotesHeader,
+        false,
+        "Should NOT show individual notes messaging for workspace strategy",
+      );
+    } finally {
+      consoleSpy.restore();
     }
   }, { quiet: true });
 });

@@ -19,6 +19,7 @@ import {
   createReleaseBranchName,
   createReleaseNote,
   createReleaseTitle,
+  createSinglePackageReleaseNote,
   defaultParseCommitMessage,
   type Diagnostic,
   getModule,
@@ -1307,10 +1308,140 @@ Deno.test("createReleaseNote() with GitHub links - individual tags", async (t) =
   });
 });
 
-Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
+Deno.test("createSinglePackageReleaseNote() format", async (t) => {
   const mockUpdate = {
     summary: {
-      module: "@scope/test-package",
+      module: "@test/single-package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat: add new feature",
+          body: "",
+          hash: "abc1234567890abcdef1234567890abcdef123456",
+          tag: "feat",
+        },
+        {
+          subject: "fix: fix critical bug",
+          body: "",
+          hash: "def4567890abcdef1234567890abcdef12345678",
+          tag: "fix",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  // Test without GitHub repo
+  const noteWithoutLinks = createSinglePackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+  );
+  await assertSnapshot(t, {
+    type: "single-package-no-links",
+    content: noteWithoutLinks,
+  });
+
+  // Test with GitHub repo and previous tag
+  const noteWithLinks = createSinglePackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+    "owner/repo",
+    "v1.0.0",
+  );
+  await assertSnapshot(t, {
+    type: "single-package-with-links",
+    content: noteWithLinks,
+  });
+
+  // Test with GitHub repo but no previous tag
+  const noteWithoutPreviousTag = createSinglePackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+    "owner/repo",
+  );
+  await assertSnapshot(t, {
+    type: "single-package-no-previous-tag",
+    content: noteWithoutPreviousTag,
+  });
+});
+
+Deno.test("createReleaseNote() vs createSinglePackageReleaseNote() format differences", async (t) => {
+  const mockModule: WorkspaceModule = {
+    name: "@test/package",
+    version: "1.1.0",
+    [pathProp]: "/path/to/deno.json",
+  };
+
+  const mockUpdate = {
+    summary: {
+      module: "@test/package",
+      version: "minor" as const,
+      commits: [
+        {
+          subject: "feat: add new feature",
+          body: "",
+          hash: "abc123",
+          tag: "feat",
+        },
+      ],
+    },
+    from: "1.0.0",
+    to: "1.1.0",
+    diff: "minor" as const,
+    path: "/path/to/deno.json",
+  };
+
+  // Multi-package format (includes module name in header)
+  const multiPackageNote = createReleaseNote(
+    [mockUpdate],
+    [mockModule],
+    new Date(0),
+  );
+
+  // Single-package format (no redundant module name)
+  const singlePackageNote = createSinglePackageReleaseNote(
+    mockUpdate,
+    new Date(0),
+  );
+
+  await assertSnapshot(t, {
+    multiPackage: multiPackageNote,
+    singlePackage: singlePackageNote,
+  });
+
+  // Verify key differences
+  assertEquals(
+    multiPackageNote.includes("#### @test/package"),
+    true,
+    "Multi-package format should include module name in header",
+  );
+
+  assertEquals(
+    singlePackageNote.includes("#### @test/package"),
+    false,
+    "Single-package format should NOT include module name in header",
+  );
+
+  assertEquals(
+    singlePackageNote.includes("### 1.1.0"),
+    true,
+    "Single-package format should have simple version header",
+  );
+});
+
+Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
+  const mockModule: WorkspaceModule = {
+    name: "@scope/test-package", // Full name with scope
+    version: "1.1.0",
+    [pathProp]: "/path/to/deno.json",
+  };
+
+  const mockUpdate = {
+    summary: {
+      module: "test-package",
       version: "minor" as const,
       commits: [
         {
@@ -1336,6 +1467,7 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   // Test individual tags mode
   const noteIndividualTags = createPackageReleaseNote(
     mockUpdate,
+    [mockModule],
     new Date(0),
     "owner/repo",
     true, // individualTags=true
@@ -1349,6 +1481,7 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   // Test consolidated tags mode
   const noteConsolidatedTags = createPackageReleaseNote(
     mockUpdate,
+    [mockModule],
     new Date(0),
     "owner/repo",
     false, // individualTags=false
@@ -1363,6 +1496,7 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   // Test single package mode
   const noteSinglePackage = createPackageReleaseNote(
     mockUpdate,
+    [mockModule],
     new Date(0),
     "owner/repo",
     false, // individualTags=false (should be ignored for single package)
@@ -1390,9 +1524,15 @@ Deno.test("getPreviousConsolidatedTag() functionality", async () => {
 });
 
 Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
+  const mockModule: WorkspaceModule = {
+    name: "@scope/test-package", // Full name with scope
+    version: "1.1.0",
+    [pathProp]: "/path/to/deno.json",
+  };
+
   const mockUpdate = {
     summary: {
-      module: "@scope/test-package",
+      module: "test-package",
       version: "minor" as const,
       commits: [
         {
@@ -1410,7 +1550,11 @@ Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
   };
 
   // Test without GitHub repo (backward compatibility)
-  const noteWithoutLinks = createPackageReleaseNote(mockUpdate, new Date(0));
+  const noteWithoutLinks = createPackageReleaseNote(
+    mockUpdate,
+    [mockModule],
+    new Date(0),
+  );
   await assertSnapshot(t, noteWithoutLinks);
 });
 
@@ -1445,9 +1589,15 @@ Deno.test("createReleaseTitle()", () => {
 });
 
 Deno.test("createPackageReleaseNote() format", async (t) => {
+  const mockModule: WorkspaceModule = {
+    name: "@scope/test-package", // Full name with scope
+    version: "1.1.0",
+    [pathProp]: "/path/to/deno.json",
+  };
+
   const mockUpdate = {
     summary: {
-      module: "@scope/test-package",
+      module: "test-package",
       version: "minor" as const,
       commits: [
         {
@@ -1470,7 +1620,7 @@ Deno.test("createPackageReleaseNote() format", async (t) => {
     path: "/path/to/deno.json",
   };
 
-  const note = createPackageReleaseNote(mockUpdate, new Date(0));
+  const note = createPackageReleaseNote(mockUpdate, [mockModule], new Date(0));
   await assertSnapshot(t, note);
 });
 

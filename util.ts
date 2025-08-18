@@ -522,6 +522,39 @@ export async function applyVersionBump(
   }];
 }
 
+export function createSinglePackageReleaseNote(
+  update: VersionUpdateResult,
+  date: Date,
+  githubRepo?: string,
+  previousTag?: string,
+): string {
+  // Simple format without redundant module names
+  const heading = `### ${update.to} (${createReleaseTitle(date)})\n\n`;
+
+  // Determine tag format for links
+  const fromTag = previousTag || `v${update.from}`;
+  const toTag = `v${update.to}`;
+
+  // Create version with compare link if GitHub repo is available
+  const versionText = githubRepo && previousTag
+    ? `[${update.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
+    : update.to;
+
+  // Alternative heading with compare link
+  const headingWithLink = githubRepo && previousTag
+    ? `### ${versionText} (${createReleaseTitle(date)})\n\n`
+    : heading;
+
+  const commits = update.summary.commits.map((c) => {
+    const shortHash = c.hash.substring(0, 7);
+    const commitLink = githubRepo
+      ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
+      : "";
+    return `- ${c.subject}${commitLink}\n`;
+  }).join("");
+  return headingWithLink + commits;
+}
+
 export function createReleaseNote(
   updates: VersionUpdateResult[],
   modules: WorkspaceModule[],
@@ -532,20 +565,14 @@ export function createReleaseNote(
 ) {
   const heading = `### ${createReleaseTitle(date)}\n\n`;
 
-  const isSinglePackage = modules.length === 1 &&
-    modules[0][pathProp].endsWith("deno.json");
-
+  // This function should now only be used for multi-package workspaces
   return heading + updates.map((u) => {
     const module = getModule(u.summary.module, modules)!;
 
-    // Determine tag format based on individualTags and isSinglePackage
+    // Multi-package workspace logic
     let fromTag: string, toTag: string;
 
-    if (isSinglePackage) {
-      // Single package always uses semver format: v1.2.3
-      fromTag = `v${u.from}`;
-      toTag = `v${u.to}`;
-    } else if (individualTags) {
+    if (individualTags) {
       // Multi-package with individual tags: @scope/package@1.2.3
       fromTag = `${module.name}@${u.from}`;
       toTag = `${module.name}@${u.to}`;
@@ -702,18 +729,32 @@ export async function createPullRequest({
     previousTag = await getPreviousConsolidatedTag(true);
   }
 
-  // Create individual release notes in package directories if requested
-  if (individualReleaseNotes) {
+  let workspaceReleaseNote: string | undefined;
+  const workspaceReleaseNotePath = join(root, releaseNotePath);
+
+  if (isSinglePackage) {
+    // Single-package repos: Use simple format at root
+    if (updates.length > 0) {
+      workspaceReleaseNote = createSinglePackageReleaseNote(
+        updates[0], // Single package, single update
+        now,
+        githubRepo,
+        previousTag,
+      );
+    }
+  } else if (individualReleaseNotes) {
+    // Multi-package with individual notes: Create individual notes ONLY
     for (const update of updates) {
       const module = getModule(update.summary.module, modules)!;
       const packageDir = getPackageDir(module, root);
       const packageReleaseNotePath = join(packageDir, releaseNotePath);
       const packageReleaseNote = createPackageReleaseNote(
         update,
+        modules,
         now,
         githubRepo,
         individualTags,
-        isSinglePackage,
+        false, // isSinglePackage = false for multi-package
         previousTag,
       );
 
@@ -725,24 +766,61 @@ export async function createPullRequest({
         packageReleaseNote + "\n" + existingContent,
       );
     }
+    // No workspace-level release note for individual strategy
+  } else {
+    // Multi-package default: Create workspace-level note only
+    workspaceReleaseNote = createReleaseNote(
+      updates,
+      modules,
+      now,
+      githubRepo,
+      individualTags,
+      previousTag,
+    );
   }
-
-  // Create main release note (either workspace-level or as consolidation)
-  const releaseNote = createReleaseNote(
-    updates,
-    modules,
-    now,
-    githubRepo,
-    individualTags,
-    previousTag,
-  );
-
-  const workspaceReleaseNotePath = join(root, releaseNotePath);
 
   if (dryRun === true) {
     console.log();
-    console.log(cyan("The release note:"));
-    console.log(releaseNote);
+
+    if (isSinglePackage) {
+      // Single-package: show the single release note
+      if (workspaceReleaseNote) {
+        console.log(cyan("The release note:"));
+        console.log(workspaceReleaseNote);
+      }
+    } else if (individualReleaseNotes) {
+      // Multi-package with individual notes: show each individual note
+      console.log(cyan("Individual release notes that would be created:"));
+      console.log();
+
+      for (const update of updates) {
+        const module = getModule(update.summary.module, modules)!;
+        const packageDir = getPackageDir(module, root);
+        const packageReleaseNotePath = join(packageDir, releaseNotePath);
+
+        const packageReleaseNote = createPackageReleaseNote(
+          update,
+          modules,
+          now,
+          githubRepo,
+          individualTags,
+          false, // isSinglePackage = false for multi-package
+          previousTag,
+        );
+
+        console.log(magenta(`📄 ${packageReleaseNotePath}:`));
+        console.log(packageReleaseNote);
+        console.log(); // Add spacing between notes
+      }
+
+      console.log(cyan("No workspace-level release note would be created."));
+    } else {
+      // Multi-package workspace strategy: show workspace note
+      if (workspaceReleaseNote) {
+        console.log(cyan("The release note:"));
+        console.log(workspaceReleaseNote);
+      }
+    }
 
     if (gitTag) {
       console.log();
@@ -772,14 +850,16 @@ export async function createPullRequest({
     // Updates deno.json
     await Deno.writeTextFile(importMapPath, importMapJson);
 
-    // Prepend release notes
-    await ensureFile(workspaceReleaseNotePath);
-    await Deno.writeTextFile(
-      workspaceReleaseNotePath,
-      releaseNote + "\n" + await Deno.readTextFile(workspaceReleaseNotePath),
-    );
-
-    await $`deno fmt ${workspaceReleaseNotePath}`;
+    // Write workspace release note only if we have one
+    if (workspaceReleaseNote) {
+      await ensureFile(workspaceReleaseNotePath);
+      await Deno.writeTextFile(
+        workspaceReleaseNotePath,
+        workspaceReleaseNote + "\n" +
+          await Deno.readTextFile(workspaceReleaseNotePath),
+      );
+      await $`deno fmt ${workspaceReleaseNotePath}`;
+    }
 
     if (dryRun === false) {
       gitUserName ??= Deno.env.get("GIT_USER_NAME");
@@ -892,15 +972,19 @@ export async function createPullRequest({
     }
   }
 }
+
 export function createPackageReleaseNote(
   update: VersionUpdateResult,
+  modules: WorkspaceModule[], // ADDED: modules array to resolve full names
   date: Date,
   githubRepo?: string,
   individualTags: boolean = false,
   isSinglePackage: boolean = false,
   previousTag?: string,
 ): string {
-  const module = update.summary.module;
+  const moduleShortName = update.summary.module;
+  const moduleInfo = getModule(moduleShortName, modules);
+  const fullModuleName = moduleInfo?.name || moduleShortName;
 
   // Determine tag format based on individualTags and isSinglePackage
   let fromTag: string, toTag: string;
@@ -911,21 +995,21 @@ export function createPackageReleaseNote(
     toTag = `v${update.to}`;
   } else if (individualTags) {
     // Multi-package with individual tags: @scope/package@1.2.3
-    fromTag = `${module}@${update.from}`;
-    toTag = `${module}@${update.to}`;
+    fromTag = `${fullModuleName}@${update.from}`;
+    toTag = `${fullModuleName}@${update.to}`;
   } else {
     // Multi-package with consolidated tags: release-YYYY.MM.DD
     const currentTag = `release-${createReleaseTitle(date)}`;
-    fromTag = previousTag || "HEAD~1";
+    fromTag = previousTag || "";
     toTag = currentTag;
   }
 
   // Create version with compare link if GitHub repo is available
-  const versionText = githubRepo
+  const versionText = githubRepo && fromTag
     ? `[${update.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
     : update.to;
 
-  const heading = `### ${module} ${versionText} (${
+  const heading = `### ${fullModuleName} ${versionText} (${
     createReleaseTitle(date)
   })\n\n`;
 
