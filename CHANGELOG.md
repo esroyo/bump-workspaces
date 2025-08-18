@@ -1,3 +1,10 @@
+### 2025.08.18
+
+#### @esroyo/deno-bump-workspaces 0.3.1 (patch)
+
+- fix: ensure either individual or consolidated release notes
+- docs: tidy README
+
 ### 2025.08.17
 
 #### @esroyo/deno-bump-workspaces 0.3.0 (minor)

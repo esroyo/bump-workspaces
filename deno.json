@@ -5,7 +5,7 @@
     ".": "./mod.ts",
     "./cli": "./cli.ts"
   },
-  "version": "0.3.0",
+  "version": "0.3.1",
   "tasks": {
     "test": "deno test -A",
     "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov",
