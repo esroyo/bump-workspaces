@@ -26,12 +26,11 @@ import {
   getPreviousConsolidatedTag,
   getSmartStartTag,
   getWorkspaceModules,
-  getWorkspaceModulesForTesting,
   maxVersion,
   pathProp,
   summarizeVersionBumpsByModule,
   type VersionBump,
-  withGitContextForTesting,
+  withGitContext,
   type WorkspaceModule,
 } from "./util.ts";
 import { tryGetDenoConfig } from "./util.ts";
@@ -1376,7 +1375,7 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
 });
 
 Deno.test("getPreviousConsolidatedTag() functionality", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     // Test the function with different tag prefixes
     const previousTag = await getPreviousConsolidatedTag(true);
 
@@ -1387,7 +1386,7 @@ Deno.test("getPreviousConsolidatedTag() functionality", async () => {
     } else {
       assertEquals(previousTag, undefined);
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
@@ -1490,7 +1489,10 @@ Deno.test("getWorkspaceModules() handles single-package repos", async () => {
   );
 
   try {
-    const [configPath, modules] = await getWorkspaceModulesForTesting(dir);
+    const [configPath, modules] = await getWorkspaceModules(dir, {
+      throwOnError: true,
+      quiet: true,
+    });
 
     assertEquals(modules.length, 1);
     assertEquals(modules[0].name, "@test/single-package");
@@ -1517,7 +1519,7 @@ Deno.test("getWorkspaceModules() fails gracefully for invalid single-package rep
   try {
     let errorThrown = false;
     try {
-      await getWorkspaceModulesForTesting(dir);
+      await getWorkspaceModules(dir, { throwOnError: true, quiet: true });
     } catch (error) {
       errorThrown = true;
       assert(error instanceof ConfigurationError);
@@ -1540,7 +1542,7 @@ Deno.test("ConfigurationError handling in getWorkspaceModules", async () => {
     );
 
     try {
-      await getWorkspaceModulesForTesting(tempDir);
+      await getWorkspaceModules(tempDir, { throwOnError: true, quiet: true });
       assert(false, "Should have thrown ConfigurationError");
     } catch (error) {
       assert(error instanceof ConfigurationError);
@@ -1575,7 +1577,7 @@ Deno.test("getPackageDir() works correctly for relative single-package paths", a
 });
 
 Deno.test("getSmartStartTag() with different modes", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const [_, modules] = await getWorkspaceModules("testdata/basic");
 
     const consoleSpy = spy(console, "log");
@@ -1635,5 +1637,5 @@ Deno.test("getSmartStartTag() with different modes", async () => {
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });

@@ -31,7 +31,6 @@ import {
   getModule,
   getSmartStartTag,
   getWorkspaceModules,
-  getWorkspaceModulesWithOptions,
   pathProp,
   summarizeVersionBumpsByModule,
   tryGetDenoConfig,
@@ -118,13 +117,10 @@ export async function bumpWorkspaces(
       releaseNotePath = "Releases.md";
     }
 
-    // Use quiet mode for getWorkspaceModules calls to avoid logging interference
-    const getModules = _quiet
-      ? (root: string) => getWorkspaceModulesWithOptions(root, { quiet: true })
-      : getWorkspaceModules;
-
     // Get current modules first to determine repository type
-    const [configPath, modules] = await getModules(root);
+    const [configPath, modules] = await getWorkspaceModules(root, {
+      quiet: _quiet,
+    });
 
     // Determine if this is a single-package repo
     const isSinglePackage = modules.length === 1 &&
@@ -228,7 +224,10 @@ export async function bumpWorkspaces(
     } else {
       // For workspace repos, use the original logic
       await $`git checkout ${start}`;
-      const [_oldConfigPath, oldModulesResult] = await getModules(root);
+      const [_oldConfigPath, oldModulesResult] = await getWorkspaceModules(
+        root,
+        { quiet: _quiet },
+      );
       oldModules = oldModulesResult;
       await $`git checkout -`;
     }

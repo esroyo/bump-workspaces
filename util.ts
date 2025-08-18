@@ -303,7 +303,7 @@ export async function tryGetDenoConfig(
   }
 }
 
-export async function getWorkspaceModulesWithOptions(
+export async function getWorkspaceModules(
   root: string,
   options: GetWorkspaceModulesOptions = {},
 ): Promise<[string, WorkspaceModule[]]> {
@@ -369,26 +369,6 @@ export async function getWorkspaceModulesWithOptions(
     result.push({ ...workspaceConfig, [pathProp]: path });
   }
   return [path, result];
-}
-
-// Public function - maintains original behavior for CLI usage
-export async function getWorkspaceModules(
-  root: string,
-): Promise<[string, WorkspaceModule[]]> {
-  return getWorkspaceModulesWithOptions(root, {
-    throwOnError: false,
-    quiet: false,
-  });
-}
-
-// Test-friendly function - throws errors instead of exiting
-export async function getWorkspaceModulesForTesting(
-  root: string,
-): Promise<[string, WorkspaceModule[]]> {
-  return getWorkspaceModulesWithOptions(root, {
-    throwOnError: true,
-    quiet: true,
-  });
 }
 
 export function getModule(module: string, modules: WorkspaceModule[]) {
@@ -1113,17 +1093,6 @@ export async function withGitContext<T>(
     // Always restore git state, even if callback threw
     await restoreGitState(initialState, options);
   }
-}
-
-/**
- * Specialized version for testing scenarios
- */
-export async function withGitContextForTesting<T>(
-  callback: () => Promise<T>,
-): Promise<T> {
-  return withGitContext(callback, {
-    quiet: true, // Don't spam test output
-  });
 }
 
 /**

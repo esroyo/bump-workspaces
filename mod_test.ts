@@ -4,13 +4,13 @@ import { assertSpyCallArg, spy, stub } from "@std/testing/mock";
 import { copy, exists } from "@std/fs";
 import { bumpWorkspaces } from "./mod.ts";
 import { join } from "@std/path";
-import { tryGetDenoConfig, withGitContextForTesting } from "./util.ts";
+import { tryGetDenoConfig, withGitContext } from "./util.ts";
 import { assert, assertEquals } from "@std/assert";
 
 // Note: The test cases in this file use git information in the branch `origin/base-branch-for-testing`.
 
 Deno.test("bumpWorkspaces()", async (t) => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
     await bumpWorkspaces({
@@ -70,13 +70,13 @@ Deno.test("bumpWorkspaces()", async (t) => {
       name: "@scope/quux",
       version: "0.1.0",
     });
-  });
+  }, { quiet: true });
 });
 
 Deno.test(
   "bumpWorkspaces() doesn't write things when dry run specified",
   async () => {
-    await withGitContextForTesting(async () => {
+    await withGitContext(async () => {
       const dir = await Deno.makeTempDir();
       await copy("testdata/basic", dir, { overwrite: true });
       await bumpWorkspaces({
@@ -106,12 +106,12 @@ Deno.test(
         },
         workspace: ["./foo", "./bar", "./baz", "./qux", "./quux"],
       });
-    });
+    }, { quiet: true });
   },
 );
 
 Deno.test("bumpWorkspaces() handles no version bumps scenario", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -142,11 +142,11 @@ Deno.test("bumpWorkspaces() handles no version bumps scenario", async () => {
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run", async (t) => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -185,19 +185,22 @@ Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run"
           new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
           "/tmp/test-dir",
         ).replace(
-          /^### (\S+ )?(\d+\.\d+\.\d+ )\(\d+\.\d+\.\d+\)$/gm,
-          "### $1$2(YYYY.MM.DD)",
-        );
+          /^### (\S+ \d+\.\d+\.\d+ )\(\d+\.\d+\.\d+\)$/gm,
+          "### $1(YYYY.MM.DD)",
+        ).replace(
+          /^### \d+\.\d+\.\d+$/gm,
+          "### YYYY.MM.DD",
+        )
       });
       await assertSnapshot(t, normalizedLogs);
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() individual release notes with git dry run", async (t) => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
     await bumpWorkspaces({
@@ -259,11 +262,11 @@ Deno.test("bumpWorkspaces() individual release notes with git dry run", async (t
         // Continue to next package
       }
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() handles unknown branch error", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -283,11 +286,11 @@ Deno.test("bumpWorkspaces() handles unknown branch error", async () => {
     } finally {
       exitSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() handles missing environment variables", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -334,11 +337,11 @@ Deno.test("bumpWorkspaces() handles missing environment variables", async () => 
         Deno.env.set("GITHUB_REPOSITORY", originalEnv.GITHUB_REPOSITORY);
       }
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() with consolidated tags (individualTags=false)", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -384,11 +387,11 @@ Deno.test("bumpWorkspaces() with consolidated tags (individualTags=false)", asyn
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() with individual tags (individualTags=true)", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -434,11 +437,11 @@ Deno.test("bumpWorkspaces() with individual tags (individualTags=true)", async (
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() with gitTag=false (default)", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -474,11 +477,11 @@ Deno.test("bumpWorkspaces() with gitTag=false (default)", async () => {
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() single package repo handling", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     // Create a temporary single-package repo
     const dir = await Deno.makeTempDir();
     const singlePackageConfig = {
@@ -518,11 +521,11 @@ Deno.test("bumpWorkspaces() single package repo handling", async () => {
       consoleSpy.restore();
       await Deno.remove(dir, { recursive: true });
     }
-  });
+  }, { quiet: true });
 });
 
 Deno.test("bumpWorkspaces() workspace repo handling", async () => {
-  await withGitContextForTesting(async () => {
+  await withGitContext(async () => {
     const dir = await Deno.makeTempDir();
     await copy("testdata/basic", dir, { overwrite: true });
 
@@ -551,5 +554,5 @@ Deno.test("bumpWorkspaces() workspace repo handling", async () => {
     } finally {
       consoleSpy.restore();
     }
-  });
+  }, { quiet: true });
 });
