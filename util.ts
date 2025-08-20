@@ -832,6 +832,11 @@ export async function createPullRequest({
   individualReleaseNotes: boolean;
   isSinglePackage: boolean;
 }) {
+  gitUserName ??= Deno.env.get("GIT_USER_NAME");
+  gitUserEmail ??= Deno.env.get("GIT_USER_EMAIL");
+  githubToken ??= Deno.env.get("GITHUB_TOKEN");
+  githubRepo ??= Deno.env.get("GITHUB_REPOSITORY");
+
   // Get previous consolidated tag if we're using consolidated releases
   let previousTag: string | undefined;
   if (!individualTags && !isSinglePackage) {
@@ -886,7 +891,7 @@ export async function createPullRequest({
         const [packageReleaseNotePath, packageReleaseNote]
           of packageReleaseNotes
       ) {
-        console.log(magenta(`📄 ${packageReleaseNotePath}:`));
+        console.log(magenta(`✍${packageReleaseNotePath}:`));
         console.log(packageReleaseNote);
         console.log(); // Add spacing between notes
       }
@@ -954,22 +959,18 @@ export async function createPullRequest({
     }
 
     if (dryRun === false) {
-      gitUserName ??= Deno.env.get("GIT_USER_NAME");
       if (gitUserName === undefined) {
         console.error("GIT_USER_NAME is not set.");
         Deno.exit(1);
       }
-      gitUserEmail ??= Deno.env.get("GIT_USER_EMAIL");
       if (gitUserEmail === undefined) {
         console.error("GIT_USER_EMAIL is not set.");
         Deno.exit(1);
       }
-      githubToken ??= Deno.env.get("GITHUB_TOKEN");
       if (githubToken === undefined) {
         console.error("GITHUB_TOKEN is not set.");
         Deno.exit(1);
       }
-      githubRepo ??= Deno.env.get("GITHUB_REPOSITORY");
       if (githubRepo === undefined) {
         console.error("GITHUB_REPOSITORY is not set.");
         Deno.exit(1);

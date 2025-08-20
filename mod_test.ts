@@ -453,7 +453,7 @@ Deno.test(
 
         // Should show file paths for each package
         const hasPackageFilePaths = logs.some((log) =>
-          log.includes("📄") && log.includes("Releases.md")
+          log.includes("✍") && log.includes("Releases.md")
         );
         assertEquals(
           hasPackageFilePaths,
