@@ -1,3 +1,16 @@
+### [0.3.2](https://github.com/esroyo/bump-workspaces/compare/v0.3.1...v0.3.2) (2025.08.20)
+
+- fix: execute deno fmt for all release notes
+  ([18c2664](https://github.com/esroyo/bump-workspaces/commit/18c2664cbf15e6f5639a7b4c7b165e21028f4602))
+- fix: defined git constants before generating notes
+  ([63f2ca3](https://github.com/esroyo/bump-workspaces/commit/63f2ca3642dfaeceae3f5ed799dfd33b0dc97490))
+- fix: avoid write release notes on dry-run
+  ([5579cd0](https://github.com/esroyo/bump-workspaces/commit/5579cd0503b7b000d46d95acc51a72cd0e1d98f0))
+- refactor: unify release notes and tag serach fns
+  ([9bfa710](https://github.com/esroyo/bump-workspaces/commit/9bfa710f8f2ec47769705329fdc662caeadf82f8))
+- chore: changelog fmt
+  ([bedf350](https://github.com/esroyo/bump-workspaces/commit/bedf350cdd6889518ccf3f0687b00a7812edf785))
+
 ### [0.3.1](https://github.com/esroyo/bump-workspaces/compare/v0.3.0...v0.3.1) (2025.08.18)
 
 - fix: ensure either individual or consolidated release notes
