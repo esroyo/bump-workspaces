@@ -1,3 +1,8 @@
+### [0.3.3](https://github.com/esroyo/bump-workspaces/compare/v0.3.2...v0.3.3) (2025.08.20)
+
+- fix: make individual notes similar to single-pkg notes
+  ([e90970b](https://github.com/esroyo/bump-workspaces/commit/e90970b0b7fd81b0d9b9c312f95535fb266b1dfe))
+
 ### [0.3.2](https://github.com/esroyo/bump-workspaces/compare/v0.3.1...v0.3.2) (2025.08.20)
 
 - fix: execute deno fmt for all release notes
