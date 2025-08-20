@@ -1,3 +1,8 @@
+### 0.3.2 (2025.08.20)
+
+- fix: avoid write release notes on dry-run
+- refactor: unify release notes and tag serach fns
+
 ### 2025.08.18
 
 #### @esroyo/deno-bump-workspaces 0.3.1 (patch)
