@@ -184,13 +184,7 @@ Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run"
         return log.replace(
           new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
           "/tmp/test-dir",
-        ).replace(
-          /^### (\S+ \d+\.\d+\.\d+ )\(\d+\.\d+\.\d+\)$/gm,
-          "### $1(YYYY.MM.DD)",
-        ).replace(
-          /^### \d+\.\d+\.\d+$/gm,
-          "### YYYY.MM.DD",
-        );
+        ).replace(/\d{4}\.\d{2}\.\d{2}/g, "YYYY.MM.DD");
       });
       await assertSnapshot(t, normalizedLogs);
     } finally {
