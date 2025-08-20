@@ -5,7 +5,7 @@
     ".": "./mod.ts",
     "./cli": "./cli.ts"
   },
-  "version": "0.3.3",
+  "version": "0.3.4",
   "tasks": {
     "clean": "git branch | grep \"release-\" | xargs git branch -D",
     "test": "deno test -A",

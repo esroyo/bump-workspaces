@@ -1,3 +1,14 @@
+### [0.3.4](https://github.com/esroyo/bump-workspaces/compare/v0.3.3...v0.3.4) (2025.08.20)
+
+- refactor: simplify single-pkg fallback
+  ([b7c97cf](https://github.com/esroyo/bump-workspaces/commit/b7c97cf280cf719ac38dc7f986bd6281da2ef680))
+- refactor: rename internal option _quiet as quiet
+  ([a621799](https://github.com/esroyo/bump-workspaces/commit/a621799a90f9391551e7b4a0d7a7ff0cbe0ddfb3))
+- refactor: remove unused git options
+  ([da8b2ef](https://github.com/esroyo/bump-workspaces/commit/da8b2ef44bfa2c6c111ba969121edced360817ab))
+- chore: add clean task
+  ([ac03687](https://github.com/esroyo/bump-workspaces/commit/ac036877677db960111227ad9353ba90849e7bbd))
+
 ### [0.3.3](https://github.com/esroyo/bump-workspaces/compare/v0.3.2...v0.3.3) (2025.08.20)
 
 - fix: make individual notes similar to single-pkg notes
