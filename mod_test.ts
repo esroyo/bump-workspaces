@@ -126,7 +126,7 @@ Deno.test("bumpWorkspaces() handles no version bumps scenario", async () => {
         base: "start-tag-for-testing", // Same as start
         start: "start-tag-for-testing", // Same as base
         root: dir,
-        _quiet: false, // Don't suppress the "No version bumps" message
+        quiet: false, // Don't suppress the "No version bumps" message
       });
 
       // Verify the "No version bumps" message was logged
@@ -163,7 +163,7 @@ Deno.test("bumpWorkspaces() individual tags and release notes mode with dry run"
         releaseNotePath: "CHANGELOG.md", // Explicit override from default
         individualTags: true,
         individualReleaseNotes: true,
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify that per-package mode was activated
@@ -436,7 +436,7 @@ Deno.test(
           start: "start-tag-for-testing",
           root: dir,
           individualReleaseNotes: true, // Key: individual notes requested
-          _quiet: false, // Don't suppress console output
+          quiet: false, // Don't suppress console output
         });
 
         const logs = consoleSpy.calls.map((call) => call.args.join(" "));
@@ -541,7 +541,7 @@ Deno.test(
           start: "start-tag-for-testing",
           root: dir,
           individualReleaseNotes: true, // This should be ignored for single-package
-          _quiet: false,
+          quiet: false,
         });
 
         const logs = consoleSpy.calls.map((call) => call.args.join(" "));
@@ -599,7 +599,7 @@ Deno.test("bumpWorkspaces() dry-run shows workspace release note preview", async
         start: "start-tag-for-testing",
         root: dir,
         individualReleaseNotes: false, // Workspace strategy
-        _quiet: false,
+        quiet: false,
       });
 
       const logs = consoleSpy.calls.map((call) => call.args.join(" "));
@@ -730,7 +730,7 @@ Deno.test("bumpWorkspaces() with consolidated tags (individualTags=false)", asyn
         root: dir,
         individualTags: false, // This should create consolidated tags
         gitTag: true,
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify consolidated tag creation behavior through console output
@@ -780,7 +780,7 @@ Deno.test("bumpWorkspaces() with individual tags (individualTags=true)", async (
         root: dir,
         individualTags: true, // This should create individual package tags
         gitTag: true,
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify individual tag creation behavior through console output
@@ -829,7 +829,7 @@ Deno.test("bumpWorkspaces() with gitTag=false (default)", async () => {
         start: "start-tag-for-testing",
         root: dir,
         gitTag: false, // Explicitly disable tag creation
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify no tag creation logs
@@ -876,7 +876,7 @@ Deno.test("bumpWorkspaces() single package repo handling", async () => {
         base: "origin/base-branch-for-testing",
         start: "start-tag-for-testing",
         root: dir,
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify single package detection
@@ -910,7 +910,7 @@ Deno.test("bumpWorkspaces() workspace repo handling", async () => {
         base: "origin/base-branch-for-testing",
         start: "start-tag-for-testing",
         root: dir,
-        _quiet: false,
+        quiet: false,
       });
 
       // Verify workspace detection

@@ -75,8 +75,8 @@ export type BumpWorkspaceOptions = {
   individualTags?: boolean;
   /** Whether to create individual release notes for each package. Default: false */
   individualReleaseNotes?: boolean;
-  /** Internal option: suppress additional logging (used for testing) */
-  _quiet?: boolean;
+  /** Suppress additional logging (used for testing) */
+  quiet?: boolean;
   /** Whether to create and push git tags automatically. Default: false (for compatibility) */
   gitTag?: boolean;
 };
@@ -100,7 +100,7 @@ export async function bumpWorkspaces(
     individualTags = false,
     individualReleaseNotes = false,
     gitTag = false,
-    _quiet = false,
+    quiet = false,
   }: BumpWorkspaceOptions = {},
 ): Promise<void> {
   return withGitContext(async () => {
@@ -118,9 +118,7 @@ export async function bumpWorkspaces(
     }
 
     // Get current modules first to determine repository type
-    const [configPath, modules] = await getWorkspaceModules(root, {
-      quiet: _quiet,
-    });
+    const [configPath, modules] = await getWorkspaceModules(root, { quiet });
 
     // Determine if this is a single-package repo
     const isSinglePackage = modules.length === 1 &&
@@ -131,12 +129,12 @@ export async function bumpWorkspaces(
         individualTags,
         isSinglePackage,
         modules,
-        quiet: _quiet,
+        quiet,
       });
     }
 
     // Only log package type info when not in quiet mode
-    if (!_quiet) {
+    if (!quiet) {
       if (isSinglePackage) {
         console.log(`Processing single package: ${cyan(modules[0].name)}`);
       } else {
@@ -208,7 +206,7 @@ export async function bumpWorkspaces(
 
         await $`git checkout -`;
       } catch {
-        if (!_quiet) {
+        if (!quiet) {
           console.warn(
             `Could not read historical config at ${start}, using fallback`,
           );
@@ -226,7 +224,7 @@ export async function bumpWorkspaces(
       await $`git checkout ${start}`;
       const [_oldConfigPath, oldModulesResult] = await getWorkspaceModules(
         root,
-        { quiet: _quiet },
+        { quiet },
       );
       oldModules = oldModulesResult;
       await $`git checkout -`;
@@ -348,5 +346,5 @@ export async function bumpWorkspaces(
     });
 
     console.log("Done.");
-  }, { quiet: _quiet });
+  }, { quiet });
 }
