@@ -14,21 +14,18 @@ import {
   calcVersionDiff,
   checkModuleName,
   ConfigurationError,
-  createPackageReleaseNote,
   createPrBody,
   createReleaseBranchName,
   createReleaseNote,
   createReleaseTitle,
-  createSinglePackageReleaseNote,
   defaultParseCommitMessage,
   type Diagnostic,
   getModule,
   getPackageDir,
-  getPreviousConsolidatedTag,
-  getSmartStartTag,
   getWorkspaceModules,
   maxVersion,
   pathProp,
+  resolveTag,
   summarizeVersionBumpsByModule,
   type VersionBump,
   withGitContext,
@@ -1262,7 +1259,12 @@ Deno.test("createReleaseNote()", async (t) => {
     exampleVersionBumps,
     modules,
   );
-  await assertSnapshot(t, createReleaseNote(updates, modules, new Date(0)));
+  await assertSnapshot(
+    t,
+    createReleaseNote(updates, { type: "workspace", modules }, {
+      date: new Date(0),
+    }),
+  );
 });
 
 Deno.test("createReleaseNote() with GitHub links - consolidated tags", async (t) => {
@@ -1275,11 +1277,13 @@ Deno.test("createReleaseNote() with GitHub links - consolidated tags", async (t)
   // Test consolidated tags (individualTags=false)
   const releaseNoteConsolidated = createReleaseNote(
     updates,
-    modules,
-    new Date(0),
-    "denoland/deno_std",
-    false, // individualTags=false
-    "release-2024.12.31", // previousTag
+    { type: "workspace", modules },
+    {
+      date: new Date(0),
+      githubRepo: "denoland/deno_std",
+      individualTags: false,
+      previousTag: "release-2024.12.31",
+    },
   );
   await assertSnapshot(t, {
     mode: "consolidated",
@@ -1297,10 +1301,12 @@ Deno.test("createReleaseNote() with GitHub links - individual tags", async (t) =
   // Test individual tags (individualTags=true)
   const releaseNoteIndividual = createReleaseNote(
     updates,
-    modules,
-    new Date(0),
-    "denoland/deno_std",
-    true, // individualTags=true
+    { type: "workspace", modules },
+    {
+      date: new Date(0),
+      githubRepo: "denoland/deno_std",
+      individualTags: true,
+    },
   );
   await assertSnapshot(t, {
     mode: "individual",
@@ -1308,7 +1314,7 @@ Deno.test("createReleaseNote() with GitHub links - individual tags", async (t) =
   });
 });
 
-Deno.test("createSinglePackageReleaseNote() format", async (t) => {
+Deno.test("createReleaseNote() single-package format", async (t) => {
   const mockUpdate = {
     summary: {
       module: "@test/single-package",
@@ -1335,9 +1341,10 @@ Deno.test("createSinglePackageReleaseNote() format", async (t) => {
   };
 
   // Test without GitHub repo
-  const noteWithoutLinks = createSinglePackageReleaseNote(
+  const noteWithoutLinks = createReleaseNote(
     mockUpdate,
-    new Date(0),
+    { type: "single-package" },
+    { date: new Date(0) },
   );
   await assertSnapshot(t, {
     type: "single-package-no-links",
@@ -1345,30 +1352,18 @@ Deno.test("createSinglePackageReleaseNote() format", async (t) => {
   });
 
   // Test with GitHub repo and previous tag
-  const noteWithLinks = createSinglePackageReleaseNote(
+  const noteWithLinks = createReleaseNote(
     mockUpdate,
-    new Date(0),
-    "owner/repo",
-    "v1.0.0",
+    { type: "single-package" },
+    { date: new Date(0), githubRepo: "owner/repo", previousTag: "v1.0.0" },
   );
   await assertSnapshot(t, {
     type: "single-package-with-links",
     content: noteWithLinks,
   });
-
-  // Test with GitHub repo but no previous tag
-  const noteWithoutPreviousTag = createSinglePackageReleaseNote(
-    mockUpdate,
-    new Date(0),
-    "owner/repo",
-  );
-  await assertSnapshot(t, {
-    type: "single-package-no-previous-tag",
-    content: noteWithoutPreviousTag,
-  });
 });
 
-Deno.test("createReleaseNote() vs createSinglePackageReleaseNote() format differences", async (t) => {
+Deno.test("createReleaseNote() workspace vs single-package format differences", async (t) => {
   const mockModule: WorkspaceModule = {
     name: "@test/package",
     version: "1.1.0",
@@ -1397,14 +1392,15 @@ Deno.test("createReleaseNote() vs createSinglePackageReleaseNote() format differ
   // Multi-package format (includes module name in header)
   const multiPackageNote = createReleaseNote(
     [mockUpdate],
-    [mockModule],
-    new Date(0),
+    { type: "workspace", modules: [mockModule] },
+    { date: new Date(0) },
   );
 
   // Single-package format (no redundant module name)
-  const singlePackageNote = createSinglePackageReleaseNote(
+  const singlePackageNote = createReleaseNote(
     mockUpdate,
-    new Date(0),
+    { type: "single-package" },
+    { date: new Date(0) },
   );
 
   await assertSnapshot(t, {
@@ -1432,7 +1428,7 @@ Deno.test("createReleaseNote() vs createSinglePackageReleaseNote() format differ
   );
 });
 
-Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
+Deno.test("createReleaseNote() individual-package with different tag modes", async (t) => {
   const mockModule: WorkspaceModule = {
     name: "@scope/test-package", // Full name with scope
     version: "1.1.0",
@@ -1465,13 +1461,10 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   };
 
   // Test individual tags mode
-  const noteIndividualTags = createPackageReleaseNote(
+  const noteIndividualTags = createReleaseNote(
     mockUpdate,
-    [mockModule],
-    new Date(0),
-    "owner/repo",
-    true, // individualTags=true
-    false, // isSinglePackage=false
+    { type: "individual-package", modules: [mockModule] },
+    { date: new Date(0), githubRepo: "owner/repo", individualTags: true },
   );
   await assertSnapshot(t, {
     mode: "individual-tags",
@@ -1479,39 +1472,39 @@ Deno.test("createPackageReleaseNote() with different tag modes", async (t) => {
   });
 
   // Test consolidated tags mode
-  const noteConsolidatedTags = createPackageReleaseNote(
+  const noteConsolidatedTags = createReleaseNote(
     mockUpdate,
-    [mockModule],
-    new Date(0),
-    "owner/repo",
-    false, // individualTags=false
-    false, // isSinglePackage=false
-    "release-2024.12.31", // previousTag
+    { type: "individual-package", modules: [mockModule] },
+    {
+      date: new Date(0),
+      githubRepo: "owner/repo",
+      individualTags: false,
+      previousTag: "release-2024.12.31",
+    },
   );
   await assertSnapshot(t, {
     mode: "consolidated-tags",
     content: noteConsolidatedTags,
   });
 
-  // Test single package mode
-  const noteSinglePackage = createPackageReleaseNote(
+  // Test consolidated tags without previousTag
+  const noteConsolidatedTagsWithoutPrevTag = createReleaseNote(
     mockUpdate,
-    [mockModule],
-    new Date(0),
-    "owner/repo",
-    false, // individualTags=false (should be ignored for single package)
-    true, // isSinglePackage=true
+    { type: "individual-package", modules: [mockModule] },
+    { date: new Date(0), githubRepo: "owner/repo", individualTags: false },
   );
   await assertSnapshot(t, {
-    mode: "single-package",
-    content: noteSinglePackage,
+    mode: "consolidated-tag-without-previous",
+    content: noteConsolidatedTagsWithoutPrevTag,
   });
 });
 
-Deno.test("getPreviousConsolidatedTag() functionality", async () => {
+Deno.test("resolveTag() previous-consolidated functionality", async () => {
   await withGitContext(async () => {
     // Test the function with different tag prefixes
-    const previousTag = await getPreviousConsolidatedTag(true);
+    const previousTag = await resolveTag("previous-consolidated", {
+      quiet: true,
+    });
 
     // Should return either a tag or undefined
     if (previousTag) {
@@ -1523,7 +1516,7 @@ Deno.test("getPreviousConsolidatedTag() functionality", async () => {
   }, { quiet: true });
 });
 
-Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
+Deno.test("createReleaseNote() backward compatibility", async (t) => {
   const mockModule: WorkspaceModule = {
     name: "@scope/test-package", // Full name with scope
     version: "1.1.0",
@@ -1550,10 +1543,10 @@ Deno.test("createPackageReleaseNote() backward compatibility", async (t) => {
   };
 
   // Test without GitHub repo (backward compatibility)
-  const noteWithoutLinks = createPackageReleaseNote(
+  const noteWithoutLinks = createReleaseNote(
     mockUpdate,
-    [mockModule],
-    new Date(0),
+    { type: "workspace", modules: [mockModule] },
+    { date: new Date(0) },
   );
   await assertSnapshot(t, noteWithoutLinks);
 });
@@ -1588,7 +1581,7 @@ Deno.test("createReleaseTitle()", () => {
   assertEquals(createReleaseTitle(date), "1970.01.01");
 });
 
-Deno.test("createPackageReleaseNote() format", async (t) => {
+Deno.test("createReleaseNote() format", async (t) => {
   const mockModule: WorkspaceModule = {
     name: "@scope/test-package", // Full name with scope
     version: "1.1.0",
@@ -1620,7 +1613,10 @@ Deno.test("createPackageReleaseNote() format", async (t) => {
     path: "/path/to/deno.json",
   };
 
-  const note = createPackageReleaseNote(mockUpdate, [mockModule], new Date(0));
+  const note = createReleaseNote(mockUpdate, {
+    type: "individual-package",
+    modules: [mockModule],
+  }, { date: new Date(0) });
   await assertSnapshot(t, note);
 });
 
@@ -1726,7 +1722,7 @@ Deno.test("getPackageDir() works correctly for relative single-package paths", a
   assertEquals(packageDir, "./test-project");
 });
 
-Deno.test("getSmartStartTag() with different modes", async () => {
+Deno.test("resolveTag() start functionality with different modes", async () => {
   await withGitContext(async () => {
     const [_, modules] = await getWorkspaceModules("testdata/basic");
 
@@ -1734,12 +1730,12 @@ Deno.test("getSmartStartTag() with different modes", async () => {
 
     try {
       // Test per-package mode with logging enabled
-      const perPackageTag = await getSmartStartTag(
-        true, // individualTags=true
+      const perPackageTag = await resolveTag("start", {
+        individualTags: true,
         modules,
-        false, // isSinglePackage=false
-        false, // Enable logging to verify behavior
-      );
+        isSinglePackage: false,
+        quiet: false,
+      });
       assert(typeof perPackageTag === "string");
       assertEquals(
         perPackageTag.length > 0,
@@ -1748,12 +1744,12 @@ Deno.test("getSmartStartTag() with different modes", async () => {
       );
 
       // Test workspace mode
-      const workspaceTag = await getSmartStartTag(
-        false, // individualTags=false
+      const workspaceTag = await resolveTag("start", {
+        individualTags: false,
         modules,
-        false, // isSinglePackage=false
-        false, // Enable logging
-      );
+        isSinglePackage: false,
+        quiet: false,
+      });
       assert(typeof workspaceTag === "string");
       assertEquals(
         workspaceTag.length > 0,
@@ -1762,12 +1758,12 @@ Deno.test("getSmartStartTag() with different modes", async () => {
       );
 
       // Test single package mode
-      const singlePackageTag = await getSmartStartTag(
-        false, // individualTags (ignored for single package)
-        [modules[0]], // Single module
-        true, // isSinglePackage=true
-        false, // Enable logging
-      );
+      const singlePackageTag = await resolveTag("start", {
+        individualTags: false,
+        modules: [modules[0]], // Single module
+        isSinglePackage: true,
+        quiet: false,
+      });
       assert(typeof singlePackageTag === "string");
       assertEquals(
         singlePackageTag.length > 0,

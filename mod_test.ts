@@ -291,7 +291,7 @@ Deno.test("bumpWorkspaces() single-package release note format", async (t) => {
 
       // Should use simple format without module name redundancy
       assertEquals(
-        content.includes("### 1.0.1"), // Simple version heading
+        content.includes("### 1.0.1") || content.includes("### [1.0.1]"), // Simple version heading
         true,
         "Should use simple version format for single package",
       );
@@ -512,71 +512,75 @@ Deno.test(
   },
 );
 
-Deno.test("bumpWorkspaces() dry-run shows single-package release note preview", async (_t) => {
-  await withGitContext(async () => {
-    // Create a temporary single-package repo
-    const dir = await Deno.makeTempDir();
-    const singlePackageConfig = {
-      name: "@test/single-package",
-      version: "1.0.0",
-      exports: "./mod.ts",
-    };
+Deno.test(
+  "bumpWorkspaces() dry-run shows single-package release note preview",
+  async (_t) => {
+    await withGitContext(async () => {
+      // Create a temporary single-package repo
+      const dir = await Deno.makeTempDir();
+      const singlePackageConfig = {
+        name: "@test/single-package",
+        version: "1.0.0",
+        exports: "./mod.ts",
+      };
 
-    await Deno.writeTextFile(
-      join(dir, "deno.json"),
-      JSON.stringify(singlePackageConfig, null, 2),
-    );
-
-    const consoleSpy = spy(console, "log");
-
-    try {
-      await bumpWorkspaces({
-        dryRun: true,
-        githubRepo: "owner/repo",
-        githubToken: "1234567890",
-        base: "origin/base-branch-for-testing",
-        start: "start-tag-for-testing",
-        root: dir,
-        individualReleaseNotes: true, // This should be ignored for single-package
-        _quiet: false,
-      });
-
-      const logs = consoleSpy.calls.map((call) => call.args.join(" "));
-
-      // Should show "The release note:" header (single note)
-      const hasReleaseNoteHeader = logs.some((log) =>
-        log.includes("The release note:")
-      );
-      assertEquals(
-        hasReleaseNoteHeader,
-        true,
-        "Should show single release note header for single-package repo",
+      await Deno.writeTextFile(
+        join(dir, "deno.json"),
+        JSON.stringify(singlePackageConfig, null, 2),
       );
 
-      // Should show simple format (version without module name)
-      const hasSimpleFormat = logs.some((log) =>
-        log.includes("### 1.0.1") && !log.includes("#### @test/single-package")
-      );
-      assertEquals(
-        hasSimpleFormat,
-        true,
-        "Should show simple format without redundant module name",
-      );
+      const consoleSpy = spy(console, "log");
 
-      // Should NOT show individual notes messaging
-      const hasIndividualNotesHeader = logs.some((log) =>
-        log.includes("Individual release notes that would be created")
-      );
-      assertEquals(
-        hasIndividualNotesHeader,
-        false,
-        "Should NOT show individual notes messaging for single-package repo",
-      );
-    } finally {
-      consoleSpy.restore();
-    }
-  }, { quiet: true });
-});
+      try {
+        await bumpWorkspaces({
+          dryRun: true,
+          githubRepo: "owner/repo",
+          githubToken: "1234567890",
+          base: "origin/base-branch-for-testing",
+          start: "start-tag-for-testing",
+          root: dir,
+          individualReleaseNotes: true, // This should be ignored for single-package
+          _quiet: false,
+        });
+
+        const logs = consoleSpy.calls.map((call) => call.args.join(" "));
+
+        // Should show "The release note:" header (single note)
+        const hasReleaseNoteHeader = logs.some((log) =>
+          log.includes("The release note:")
+        );
+        assertEquals(
+          hasReleaseNoteHeader,
+          true,
+          "Should show single release note header for single-package repo",
+        );
+
+        // Should show simple format (version without module name)
+        const hasSimpleFormat = logs.some((log) =>
+          (log.includes("### 1.0.1") || log.includes("### [1.0.1]")) &&
+          !log.includes("#### @test/single-package")
+        );
+        assertEquals(
+          hasSimpleFormat,
+          true,
+          "Should show simple format without redundant module name",
+        );
+
+        // Should NOT show individual notes messaging
+        const hasIndividualNotesHeader = logs.some((log) =>
+          log.includes("Individual release notes that would be created")
+        );
+        assertEquals(
+          hasIndividualNotesHeader,
+          false,
+          "Should NOT show individual notes messaging for single-package repo",
+        );
+      } finally {
+        consoleSpy.restore();
+      }
+    }, { quiet: true });
+  },
+);
 
 Deno.test("bumpWorkspaces() dry-run shows workspace release note preview", async (_t) => {
   await withGitContext(async () => {

@@ -84,6 +84,25 @@ export type VersionUpdateResult = {
   summary: VersionBumpSummary;
 };
 
+export interface ReleaseNoteConfig {
+  date: Date;
+  githubRepo?: string;
+  individualTags?: boolean;
+  previousTag?: string;
+}
+
+export type ReleaseNoteContext =
+  | { type: "single-package" }
+  | { type: "workspace"; modules: WorkspaceModule[] }
+  | { type: "individual-package"; modules: WorkspaceModule[] };
+
+export interface TagSearchConfig {
+  individualTags?: boolean;
+  isSinglePackage?: boolean;
+  modules?: WorkspaceModule[];
+  quiet?: boolean;
+}
+
 /**
  * Git context state that can be captured and restored
  */
@@ -522,82 +541,172 @@ export async function applyVersionBump(
   }];
 }
 
-export function createSinglePackageReleaseNote(
-  update: VersionUpdateResult,
-  date: Date,
-  githubRepo?: string,
-  previousTag?: string,
+/**
+ * Unified release note creation function
+ */
+export function createReleaseNote(
+  updates: VersionUpdateResult | VersionUpdateResult[],
+  context: ReleaseNoteContext,
+  config: ReleaseNoteConfig,
 ): string {
-  // Simple format without redundant module names
-  const heading = `### ${update.to} (${createReleaseTitle(date)})\n\n`;
+  const updatesArray = Array.isArray(updates) ? updates : [updates];
+  const releaseTitle = createReleaseTitle(config.date);
 
-  // Determine tag format for links
-  const fromTag = previousTag || `v${update.from}`;
-  const toTag = `v${update.to}`;
+  switch (context.type) {
+    case "single-package":
+      return buildSinglePackageNote(updatesArray[0], releaseTitle, config);
 
-  // Create version with compare link if GitHub repo is available
-  const versionText = githubRepo && previousTag
-    ? `[${update.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
-    : update.to;
+    case "workspace":
+      return buildWorkspaceNote(
+        updatesArray,
+        context.modules,
+        releaseTitle,
+        config,
+      );
 
-  // Alternative heading with compare link
-  const headingWithLink = githubRepo && previousTag
-    ? `### ${versionText} (${createReleaseTitle(date)})\n\n`
-    : heading;
-
-  const commits = update.summary.commits.map((c) => {
-    const shortHash = c.hash.substring(0, 7);
-    const commitLink = githubRepo
-      ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
-      : "";
-    return `- ${c.subject}${commitLink}\n`;
-  }).join("");
-  return headingWithLink + commits;
+    case "individual-package":
+      return buildIndividualPackageNote(
+        updatesArray[0],
+        context.modules,
+        releaseTitle,
+        config,
+      );
+  }
 }
 
-export function createReleaseNote(
+function buildSinglePackageNote(
+  update: VersionUpdateResult,
+  releaseTitle: string,
+  config: ReleaseNoteConfig,
+): string {
+  const { fromTag, toTag } = createSinglePackageTags(
+    update,
+    config.previousTag,
+  );
+  const versionText = formatVersionWithLink(
+    update.to,
+    config.githubRepo,
+    fromTag,
+    toTag,
+  );
+
+  return `### ${versionText} (${releaseTitle})\n\n${
+    formatCommitList(update.summary.commits, config.githubRepo)
+  }`;
+}
+
+function buildWorkspaceNote(
   updates: VersionUpdateResult[],
   modules: WorkspaceModule[],
-  date: Date,
-  githubRepo?: string,
-  individualTags: boolean = false,
-  previousTag?: string,
-) {
-  const heading = `### ${createReleaseTitle(date)}\n\n`;
+  releaseTitle: string,
+  config: ReleaseNoteConfig,
+): string {
+  const heading = `### ${releaseTitle}\n\n`;
 
-  // This function should now only be used for multi-package workspaces
-  return heading + updates.map((u) => {
-    const module = getModule(u.summary.module, modules)!;
+  const moduleNotes = updates.map((update) => {
+    const module = getModule(update.summary.module, modules)!;
+    const { fromTag, toTag } = createWorkspaceTags(
+      module,
+      update,
+      config.individualTags,
+      releaseTitle,
+      config.previousTag,
+    );
+    const versionText = formatVersionWithLink(
+      update.to,
+      config.githubRepo,
+      fromTag,
+      toTag,
+    );
+    const commits = formatCommitList(update.summary.commits, config.githubRepo);
 
-    // Multi-package workspace logic
-    let fromTag: string, toTag: string;
-
-    if (individualTags) {
-      // Multi-package with individual tags: @scope/package@1.2.3
-      fromTag = `${module.name}@${u.from}`;
-      toTag = `${module.name}@${u.to}`;
-    } else {
-      // Multi-package with consolidated tags: release-YYYY.MM.DD
-      const currentTag = `release-${createReleaseTitle(date)}`;
-      fromTag = previousTag || ""; // Will be empty if no previous tag
-      toTag = currentTag;
-    }
-
-    // Create version with compare link only if we have a meaningful fromTag and GitHub repo
-    const versionText = githubRepo && fromTag
-      ? `[${u.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
-      : u.to; // Just show version number without link
-
-    const commits = u.summary.commits.map((c) => {
-      const shortHash = c.hash.substring(0, 7);
-      const commitLink = githubRepo
-        ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
-        : "";
-      return `- ${c.subject}${commitLink}\n`;
-    }).join("");
-
-    return `#### ${module.name} ${versionText} (${u.diff}) \n${commits}`;
+    return `#### ${module.name} ${versionText} (${update.diff})\n${commits}`;
   }).join("\n");
+
+  return heading + moduleNotes;
+}
+
+function buildIndividualPackageNote(
+  update: VersionUpdateResult,
+  modules: WorkspaceModule[],
+  releaseTitle: string,
+  config: ReleaseNoteConfig,
+): string {
+  const module = getModule(update.summary.module, modules);
+  const fullModuleName = module?.name || update.summary.module;
+
+  const { fromTag, toTag } = createWorkspaceTags(
+    module!,
+    update,
+    config.individualTags,
+    releaseTitle,
+    config.previousTag,
+  );
+  const versionText = formatVersionWithLink(
+    update.to,
+    config.githubRepo,
+    fromTag,
+    toTag,
+  );
+
+  return `### ${fullModuleName} ${versionText} (${releaseTitle})\n\n${
+    formatCommitList(update.summary.commits, config.githubRepo)
+  }`;
+}
+
+function createSinglePackageTags(
+  update: VersionUpdateResult,
+  previousTag?: string,
+): { fromTag: string; toTag: string } {
+  return {
+    fromTag: previousTag || `v${update.from}`,
+    toTag: `v${update.to}`,
+  };
+}
+
+function createWorkspaceTags(
+  module: WorkspaceModule,
+  update: VersionUpdateResult,
+  individualTags = false,
+  releaseTitle: string,
+  previousTag?: string,
+): { fromTag: string; toTag: string } {
+  if (individualTags) {
+    return {
+      fromTag: `${module.name}@${update.from}`,
+      toTag: `${module.name}@${update.to}`,
+    };
+  }
+
+  return {
+    fromTag: previousTag || "",
+    toTag: `release-${releaseTitle}`,
+  };
+}
+
+function formatVersionWithLink(
+  version: string,
+  githubRepo?: string,
+  fromTag?: string,
+  toTag?: string,
+): string {
+  if (githubRepo && fromTag && toTag) {
+    return `[${version}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`;
+  }
+  return version;
+}
+
+function formatCommitList(
+  commits: Array<{ subject: string; hash: string }>,
+  githubRepo?: string,
+): string {
+  return commits.map((commit) => {
+    const shortHash = commit.hash.substring(0, 7);
+    const commitLink = githubRepo
+      ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${commit.hash}))`
+      : "";
+    return `- ${commit.subject}${commitLink}\n`;
+  }).join("");
 }
 
 export function createPrBody(
@@ -726,7 +835,7 @@ export async function createPullRequest({
   // Get previous consolidated tag if we're using consolidated releases
   let previousTag: string | undefined;
   if (!individualTags && !isSinglePackage) {
-    previousTag = await getPreviousConsolidatedTag(true);
+    previousTag = await resolveTag("previous-consolidated", { quiet: true });
   }
 
   let workspaceReleaseNote: string | undefined;
@@ -736,11 +845,10 @@ export async function createPullRequest({
   if (isSinglePackage) {
     // Single-package repos: Use simple format at root
     if (updates.length > 0) {
-      workspaceReleaseNote = createSinglePackageReleaseNote(
-        updates[0], // Single package, single update
-        now,
-        githubRepo,
-        previousTag,
+      workspaceReleaseNote = createReleaseNote(
+        updates[0],
+        { type: "single-package" },
+        { date: now, githubRepo, individualTags, previousTag },
       );
     }
   } else if (individualReleaseNotes) {
@@ -749,14 +857,10 @@ export async function createPullRequest({
       const module = getModule(update.summary.module, modules)!;
       const packageDir = getPackageDir(module, root);
       const packageReleaseNotePath = join(packageDir, releaseNotePath);
-      const packageReleaseNote = createPackageReleaseNote(
+      const packageReleaseNote = createReleaseNote(
         update,
-        modules,
-        now,
-        githubRepo,
-        individualTags,
-        false, // isSinglePackage = false for multi-package
-        previousTag,
+        { type: "individual-package", modules },
+        { date: now, githubRepo, individualTags, previousTag },
       );
       packageReleaseNotes.push([packageReleaseNotePath, packageReleaseNote]);
     }
@@ -765,11 +869,8 @@ export async function createPullRequest({
     // Multi-package default: Create workspace-level note only
     workspaceReleaseNote = createReleaseNote(
       updates,
-      modules,
-      now,
-      githubRepo,
-      individualTags,
-      previousTag,
+      { type: "workspace", modules },
+      { date: now, githubRepo, individualTags, previousTag },
     );
   }
 
@@ -964,57 +1065,6 @@ export async function createPullRequest({
   }
 }
 
-export function createPackageReleaseNote(
-  update: VersionUpdateResult,
-  modules: WorkspaceModule[], // ADDED: modules array to resolve full names
-  date: Date,
-  githubRepo?: string,
-  individualTags: boolean = false,
-  isSinglePackage: boolean = false,
-  previousTag?: string,
-): string {
-  const moduleShortName = update.summary.module;
-  const moduleInfo = getModule(moduleShortName, modules);
-  const fullModuleName = moduleInfo?.name || moduleShortName;
-
-  // Determine tag format based on individualTags and isSinglePackage
-  let fromTag: string, toTag: string;
-
-  if (isSinglePackage) {
-    // Single package always uses semver format: v1.2.3
-    fromTag = `v${update.from}`;
-    toTag = `v${update.to}`;
-  } else if (individualTags) {
-    // Multi-package with individual tags: @scope/package@1.2.3
-    fromTag = `${fullModuleName}@${update.from}`;
-    toTag = `${fullModuleName}@${update.to}`;
-  } else {
-    // Multi-package with consolidated tags: release-YYYY.MM.DD
-    const currentTag = `release-${createReleaseTitle(date)}`;
-    fromTag = previousTag || "";
-    toTag = currentTag;
-  }
-
-  // Create version with compare link if GitHub repo is available
-  const versionText = githubRepo && fromTag
-    ? `[${update.to}](https://github.com/${githubRepo}/compare/${fromTag}...${toTag})`
-    : update.to;
-
-  const heading = `### ${fullModuleName} ${versionText} (${
-    createReleaseTitle(date)
-  })\n\n`;
-
-  const commits = update.summary.commits.map((c) => {
-    const shortHash = c.hash.substring(0, 7);
-    const commitLink = githubRepo
-      ? ` ([${shortHash}](https://github.com/${githubRepo}/commit/${c.hash}))`
-      : "";
-    return `- ${c.subject}${commitLink}\n`;
-  }).join("");
-
-  return heading + commits;
-}
-
 export function getPackageDir(module: WorkspaceModule, root: string): string {
   // Extract directory path from the module's deno.json path
   const configPath = module[pathProp];
@@ -1207,15 +1257,61 @@ export async function getCurrentGitBranch(): Promise<string> {
   }
 }
 
-export async function getSmartStartTag(
-  individualTags: boolean,
-  modules: WorkspaceModule[],
-  isSinglePackage: boolean,
-  quiet: boolean = false,
-): Promise<string> {
+export async function resolveTag(
+  purpose: "start",
+  config: TagSearchConfig,
+): Promise<string>;
+export async function resolveTag(
+  purpose: "previous-consolidated",
+  config: TagSearchConfig,
+): Promise<string | undefined>;
+export async function resolveTag(
+  purpose: "start" | "previous-consolidated",
+  config: TagSearchConfig,
+): Promise<string | undefined> {
+  const { quiet = false } = config;
+
+  if (purpose === "previous-consolidated") {
+    return await getPreviousConsolidatedTagLogic(quiet);
+  }
+
+  return await getStartTagLogic(config);
+}
+
+async function getPreviousConsolidatedTagLogic(
+  quiet: boolean,
+): Promise<string | undefined> {
+  try {
+    const tags = await $`git tag -l "release-*" --sort=-version:refname`.text();
+    const tagList = tags.trim().split("\n").filter(Boolean);
+
+    if (tagList.length > 0) {
+      const previousTag = tagList[0];
+      if (!quiet) {
+        console.log(`Found previous consolidated tag: ${previousTag}`);
+      }
+      return previousTag;
+    }
+
+    if (!quiet) {
+      console.log("No previous consolidated tags found");
+    }
+    return undefined;
+  } catch (error) {
+    if (!quiet) {
+      console.warn("Failed to get previous consolidated tag:", error);
+    }
+    return undefined;
+  }
+}
+
+async function getStartTagLogic(config: TagSearchConfig): Promise<string> {
+  const { individualTags, isSinglePackage, modules = [], quiet = false } =
+    config;
+
   try {
     if (individualTags && !isSinglePackage) {
-      // Per-package workspace: find most recent tag across all packages
+      // Per-package workspace: find most recent tag across all packages by DATE
       if (!quiet) {
         console.log("Detecting per-package workspace tags...");
       }
@@ -1225,7 +1321,6 @@ export async function getSmartStartTag(
 
       for (const module of modules) {
         try {
-          // Look for tags matching this specific package pattern
           const packagePattern = `${module.name}@*`;
           const packageTag =
             await $`git describe --tags --abbrev=0 --match=${packagePattern}`
@@ -1246,7 +1341,6 @@ export async function getSmartStartTag(
             }
           }
         } catch {
-          // No tags found for this package, skip
           if (!quiet) {
             console.log(`No tags found for ${module.name}`);
           }
@@ -1254,14 +1348,13 @@ export async function getSmartStartTag(
       }
 
       if (packageTags.length > 0) {
-        // Return the most recent tag across all packages
+        // Return the most recent tag across all packages BY DATE
         packageTags.sort((a, b) => b.date.getTime() - a.date.getTime());
         const mostRecentTag = packageTags[0].tag;
 
         if (!quiet) {
           console.log(`Using most recent tag: ${mostRecentTag}`);
         }
-
         return mostRecentTag;
       }
     } else if (isSinglePackage) {
@@ -1275,7 +1368,6 @@ export async function getSmartStartTag(
         if (!quiet) {
           console.log(`Found single-package tag: ${latestTag.trim()}`);
         }
-
         return latestTag.trim();
       } catch {
         if (!quiet) {
@@ -1301,34 +1393,5 @@ export async function getSmartStartTag(
     } catch {
       return "";
     }
-  }
-}
-
-export async function getPreviousConsolidatedTag(
-  quiet: boolean = false,
-): Promise<string | undefined> {
-  try {
-    // Get all tags matching the consolidated pattern, sorted by version (date-based)
-    const tags = await $`git tag -l "release-*" --sort=-version:refname`.text();
-    const tagList = tags.trim().split("\n").filter(Boolean);
-
-    if (tagList.length > 0) {
-      // Return the most recent tag (which should be the previous release)
-      const previousTag = tagList[0];
-      if (!quiet) {
-        console.log(`Found previous consolidated tag: ${previousTag}`);
-      }
-      return previousTag;
-    }
-
-    if (!quiet) {
-      console.log("No previous consolidated tags found");
-    }
-    return undefined;
-  } catch (error) {
-    if (!quiet) {
-      console.warn("Failed to get previous consolidated tag:", error);
-    }
-    return undefined;
   }
 }

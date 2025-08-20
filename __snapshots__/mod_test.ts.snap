@@ -135,7 +135,7 @@ snapshot[`bumpWorkspaces() individual release notes with git dry run 1`] = `
 
 snapshot[`bumpWorkspaces() single-package release note format 1`] = `
 {
-  content: "### 1.0.1 (YYYY.MM.DD)
+  content: "### [1.0.1](https://github.com/owner/repo/compare/v1.0.0...v1.0.1) (YYYY.MM.DD)
 
 - fix: a fix
   ([7012b65](https://github.com/owner/repo/commit/7012b655a5edbcc810183a44f07dc602b3c4e47b))

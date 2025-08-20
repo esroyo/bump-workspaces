@@ -29,9 +29,9 @@ import {
   type Diagnostic,
   getCurrentGitBranch,
   getModule,
-  getSmartStartTag,
   getWorkspaceModules,
   pathProp,
+  resolveTag,
   summarizeVersionBumpsByModule,
   tryGetDenoConfig,
   type VersionBump,
@@ -127,12 +127,12 @@ export async function bumpWorkspaces(
       modules[0][pathProp] === configPath;
 
     if (!start) {
-      start = await getSmartStartTag(
+      start = await resolveTag("start", {
         individualTags,
-        modules,
         isSinglePackage,
-        _quiet,
-      );
+        modules,
+        quiet: _quiet,
+      });
     }
 
     // Only log package type info when not in quiet mode
