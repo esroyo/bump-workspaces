@@ -462,7 +462,8 @@ Deno.test(
         );
 
         // Should show release note content (with package names)
-        const hasPackageContent = logs.some((log) => log.includes("### @scope/") // Package release notes have module names
+        const hasPackageContent = logs.some((log) =>
+          log.match(/^### \[?\d\.\d\.\d\]?/gm) // Package release notes does not have module names
         );
         assertEquals(
           hasPackageContent,

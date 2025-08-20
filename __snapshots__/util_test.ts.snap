@@ -638,7 +638,7 @@ snapshot[`createReleaseNote() workspace vs single-package format differences 1`]
 
 snapshot[`createReleaseNote() individual-package with different tag modes 1`] = `
 {
-  content: "### @scope/test-package [1.1.0](https://github.com/owner/repo/compare/@scope/test-package@1.0.0...@scope/test-package@1.1.0) (1970.01.01)
+  content: "### [1.1.0](https://github.com/owner/repo/compare/@scope/test-package@1.0.0...@scope/test-package@1.1.0) (1970.01.01)
 
 - feat(test-package): add new feature ([abc1234](https://github.com/owner/repo/commit/abc1234567890abcdef1234567890abcdef123456))
 - fix(test-package): fix critical bug ([def4567](https://github.com/owner/repo/commit/def4567890abcdef1234567890abcdef12345678))
@@ -649,7 +649,7 @@ snapshot[`createReleaseNote() individual-package with different tag modes 1`] = 
 
 snapshot[`createReleaseNote() individual-package with different tag modes 2`] = `
 {
-  content: "### @scope/test-package [1.1.0](https://github.com/owner/repo/compare/release-2024.12.31...release-1970.01.01) (1970.01.01)
+  content: "### [1.1.0](https://github.com/owner/repo/compare/release-2024.12.31...release-1970.01.01) (1970.01.01)
 
 - feat(test-package): add new feature ([abc1234](https://github.com/owner/repo/commit/abc1234567890abcdef1234567890abcdef123456))
 - fix(test-package): fix critical bug ([def4567](https://github.com/owner/repo/commit/def4567890abcdef1234567890abcdef12345678))
@@ -660,7 +660,7 @@ snapshot[`createReleaseNote() individual-package with different tag modes 2`] = 
 
 snapshot[`createReleaseNote() individual-package with different tag modes 3`] = `
 {
-  content: "### @scope/test-package 1.1.0 (1970.01.01)
+  content: "### 1.1.0 (1970.01.01)
 
 - feat(test-package): add new feature ([abc1234](https://github.com/owner/repo/commit/abc1234567890abcdef1234567890abcdef123456))
 - fix(test-package): fix critical bug ([def4567](https://github.com/owner/repo/commit/def4567890abcdef1234567890abcdef12345678))
@@ -725,7 +725,7 @@ git fetch upstream release-1970-01-01-00-00-00 && git checkout -b release-1970-0
 `;
 
 snapshot[`createReleaseNote() format 1`] = `
-"### @scope/test-package 1.1.0 (1970.01.01)
+"### 1.1.0 (1970.01.01)
 
 - feat(test-package): add new feature
 - fix(test-package): fix critical bug

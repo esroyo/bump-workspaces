@@ -633,7 +633,6 @@ function buildIndividualPackageNote(
   config: ReleaseNoteConfig,
 ): string {
   const module = getModule(update.summary.module, modules);
-  const fullModuleName = module?.name || update.summary.module;
 
   const { fromTag, toTag } = createWorkspaceTags(
     module!,
@@ -649,7 +648,7 @@ function buildIndividualPackageNote(
     toTag,
   );
 
-  return `### ${fullModuleName} ${versionText} (${releaseTitle})\n\n${
+  return `### ${versionText} (${releaseTitle})\n\n${
     formatCommitList(update.summary.commits, config.githubRepo)
   }`;
 }
