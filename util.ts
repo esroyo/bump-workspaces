@@ -106,22 +106,19 @@ export interface TagSearchConfig {
 /**
  * Git context state that can be captured and restored
  */
-export interface GitState {
+interface GitState {
   branch: string;
-  workingDirectory: string;
   hasUncommittedChanges: boolean;
 }
 
 /**
  * Options for git context management
  */
-export interface GitContextOptions {
-  /** Whether to stash uncommitted changes before starting (default: false) */
-  stashChanges?: boolean;
-  /** Whether to suppress restoration logging (default: false) */
-  quiet?: boolean;
+interface GitContextOptions {
   /** Custom working directory (default: current directory) */
   workingDirectory?: string;
+  /** Whether to suppress restoration logging (default: false) */
+  quiet?: boolean;
 }
 
 // Options interface for controlling behavior
@@ -1087,177 +1084,6 @@ export function getPackageDir(module: WorkspaceModule, root: string): string {
   return join(root, packageDir);
 }
 
-/**
- * Captures the current git state for later restoration
- */
-async function captureGitState(
-  options: GitContextOptions = {},
-): Promise<GitState | null> {
-  try {
-    const cwd = options.workingDirectory || Deno.cwd();
-
-    // Get current branch using compatible method
-    const branch = await getCurrentGitBranch();
-
-    // Check for uncommitted changes
-    const status = await $`git status --porcelain`.text();
-    const hasUncommittedChanges = status.trim().length > 0;
-
-    if (!options.quiet) {
-      console.log(
-        `Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`,
-      );
-    }
-
-    return {
-      branch: branch.trim(),
-      workingDirectory: cwd,
-      hasUncommittedChanges,
-    };
-  } catch (error) {
-    if (!options.quiet) {
-      console.warn("Failed to capture git state:", error);
-    }
-    return null;
-  }
-}
-
-/**
- * Restores git state to a previously captured state
- */
-async function restoreGitState(
-  state: GitState,
-  options: GitContextOptions = {},
-): Promise<boolean> {
-  try {
-    const currentBranch = await getCurrentGitBranch();
-
-    if (currentBranch.trim() !== state.branch) {
-      if (!options.quiet) {
-        console.log(
-          `Restoring git branch: ${state.branch} (was on: ${currentBranch.trim()})`,
-        );
-      }
-      await $`git checkout ${state.branch}`.quiet();
-    } else {
-      if (!options.quiet) {
-        console.log(`Already on target branch: ${state.branch}`);
-      }
-    }
-
-    if (!options.quiet) {
-      console.log(`Git state restored successfully`);
-    }
-    return true;
-  } catch (error) {
-    if (!options.quiet) {
-      console.warn(
-        `Failed to restore git state to branch "${state.branch}":`,
-        error,
-      );
-      console.warn(
-        `You may need to manually run: git checkout ${state.branch}`,
-      );
-    }
-    return false;
-  }
-}
-
-/**
- * Executes a callback function while managing git state backup and restoration.
- *
- * This utility automatically:
- * - Captures the current git state (branch, working directory, etc.)
- * - Executes your callback function
- * - Restores the original git state afterwards (even if callback throws)
- *
- * @param callback - The function to execute within the git context
- * @param options - Configuration options for git context management
- * @returns Promise resolving to the callback's return value
- *
- * @example
- * ```typescript
- * // Simple usage
- * await withGitContext(async () => {
- *   await $`git checkout some-branch`;
- *   await $`git checkout -b feature-branch`;
- *   // Do work...
- *   // Original branch is automatically restored
- * });
- *
- * // With options
- * await withGitContext(async () => {
- *   // Git operations here
- * }, {
- *   quiet: true,
- *   stashChanges: true
- * });
- * ```
- */
-export async function withGitContext<T>(
-  callback: () => Promise<T>,
-  options: GitContextOptions = {},
-): Promise<T> {
-  // Capture current git state
-  const initialState = await captureGitState(options);
-
-  if (!initialState) {
-    if (!options.quiet) {
-      console.warn(
-        "Could not capture git state - proceeding without restoration",
-      );
-    }
-    // Still execute callback, but without restoration
-    return await callback();
-  }
-
-  try {
-    // Execute the callback
-    const result = await callback();
-    return result;
-  } finally {
-    // Always restore git state, even if callback threw
-    await restoreGitState(initialState, options);
-  }
-}
-
-/**
- * Get current git branch, compatible with older git versions and detached HEAD
- */
-export async function getCurrentGitBranch(): Promise<string> {
-  try {
-    // Try modern approach first (Git 2.22+)
-    const result = await $`git branch --show-current`.text();
-    if (result.trim()) {
-      return result.trim();
-    }
-  } catch {
-    // Fallback - ignore the error and try alternatives
-  }
-
-  try {
-    // Fallback for older Git versions or detached HEAD
-    const output = await $`git rev-parse --abbrev-ref HEAD`.text();
-    const branch = output.trim();
-    // If we get "HEAD", we're in detached state, try to get a meaningful name
-    if (branch === "HEAD") {
-      try {
-        // Try to get a tag or describe
-        const described = await $`git describe --exact-match HEAD`.text();
-        return described.trim();
-      } catch {
-        // Return the short SHA if nothing else works
-        const sha = await $`git rev-parse --short HEAD`.text();
-        return `detached-${sha.trim()}`;
-      }
-    }
-    return branch;
-  } catch {
-    // Final fallback
-    return "unknown";
-  }
-}
-
 export async function resolveTag(
   purpose: "start",
   config: TagSearchConfig,
@@ -1394,5 +1220,131 @@ async function getStartTagLogic(config: TagSearchConfig): Promise<string> {
     } catch {
       return "";
     }
+  }
+}
+
+/**
+ * Get current git branch, compatible with older git versions and detached HEAD
+ */
+export async function getCurrentGitBranch(): Promise<string> {
+  try {
+    // Try modern approach first
+    const result = await $`git branch --show-current`.text();
+    if (result.trim()) return result.trim();
+
+    // Fallback for older versions
+    const branch = await $`git rev-parse --abbrev-ref HEAD`.text().then((s) =>
+      s.trim()
+    );
+    if (branch === "HEAD") {
+      // Detached HEAD - try to get meaningful name
+      try {
+        return await $`git describe --exact-match HEAD`.text().then((s) =>
+          s.trim()
+        );
+      } catch {
+        const sha = await $`git rev-parse --short HEAD`.text();
+        return `detached-${sha.trim()}`;
+      }
+    }
+    return branch;
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Captures the current git state for later restoration
+ */
+async function captureGitState(
+  options: GitContextOptions = {},
+): Promise<GitState | null> {
+  try {
+    const branch = await getCurrentGitBranch();
+    const status = await $`git status --porcelain`.text();
+    const hasUncommittedChanges = status.trim().length > 0;
+
+    if (!options.quiet) {
+      console.log(
+        `Capturing git state: branch="${branch}", uncommitted=${hasUncommittedChanges}`,
+      );
+    }
+
+    return { branch, hasUncommittedChanges };
+  } catch (error) {
+    if (!options.quiet) console.warn("Failed to capture git state:", error);
+    return null;
+  }
+}
+
+/**
+ * Restores git state to a previously captured state
+ */
+async function restoreGitState(
+  state: GitState,
+  options: GitContextOptions = {},
+): Promise<void> {
+  try {
+    const currentBranch = await getCurrentGitBranch();
+
+    if (currentBranch !== state.branch) {
+      if (!options.quiet) {
+        console.log(
+          `Restoring git branch: ${state.branch} (was on: ${currentBranch})`,
+        );
+      }
+      await $`git checkout ${state.branch}`.quiet();
+    } else if (!options.quiet) {
+      console.log(`Already on target branch: ${state.branch}`);
+    }
+
+    if (!options.quiet) console.log("Git state restored successfully");
+  } catch (error) {
+    if (!options.quiet) {
+      console.warn(
+        `Failed to restore git state to branch "${state.branch}":`,
+        error,
+      );
+      console.warn(
+        `You may need to manually run: git checkout ${state.branch}`,
+      );
+    }
+  }
+}
+
+/**
+ * Executes a callback function while managing git state backup and restoration.
+ *
+ * @param callback - The function to execute within the git context
+ * @param options - Configuration options for git context management
+ * @returns Promise resolving to the callback's return value
+ *
+ * @example
+ * ```typescript
+ * await withGitContext(async () => {
+ *   await $`git checkout feature-branch`;
+ *   // Do work... original branch is automatically restored
+ * });
+ * ```
+ */
+export async function withGitContext<T>(
+  callback: () => Promise<T>,
+  options: GitContextOptions = {},
+): Promise<T> {
+  const initialState = await captureGitState(options);
+
+  if (!initialState) {
+    if (!options.quiet) {
+      console.warn(
+        "Could not capture git state - proceeding without restoration",
+      );
+    }
+    return await callback();
+  }
+
+  try {
+    return await callback();
+  } finally {
+    await restoreGitState(initialState, options);
   }
 }
