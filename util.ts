@@ -731,6 +731,7 @@ export async function createPullRequest({
 
   let workspaceReleaseNote: string | undefined;
   const workspaceReleaseNotePath = join(root, releaseNotePath);
+  const packageReleaseNotes: Array<[string, string]> = [];
 
   if (isSinglePackage) {
     // Single-package repos: Use simple format at root
@@ -757,14 +758,7 @@ export async function createPullRequest({
         false, // isSinglePackage = false for multi-package
         previousTag,
       );
-
-      await ensureFile(packageReleaseNotePath);
-      const existingContent = await Deno.readTextFile(packageReleaseNotePath)
-        .catch(() => "");
-      await Deno.writeTextFile(
-        packageReleaseNotePath,
-        packageReleaseNote + "\n" + existingContent,
-      );
+      packageReleaseNotes.push([packageReleaseNotePath, packageReleaseNote]);
     }
     // No workspace-level release note for individual strategy
   } else {
@@ -782,32 +776,15 @@ export async function createPullRequest({
   if (dryRun === true) {
     console.log();
 
-    if (isSinglePackage) {
-      // Single-package: show the single release note
-      if (workspaceReleaseNote) {
-        console.log(cyan("The release note:"));
-        console.log(workspaceReleaseNote);
-      }
-    } else if (individualReleaseNotes) {
+    if (individualReleaseNotes && !isSinglePackage) {
       // Multi-package with individual notes: show each individual note
       console.log(cyan("Individual release notes that would be created:"));
       console.log();
 
-      for (const update of updates) {
-        const module = getModule(update.summary.module, modules)!;
-        const packageDir = getPackageDir(module, root);
-        const packageReleaseNotePath = join(packageDir, releaseNotePath);
-
-        const packageReleaseNote = createPackageReleaseNote(
-          update,
-          modules,
-          now,
-          githubRepo,
-          individualTags,
-          false, // isSinglePackage = false for multi-package
-          previousTag,
-        );
-
+      for (
+        const [packageReleaseNotePath, packageReleaseNote]
+          of packageReleaseNotes
+      ) {
         console.log(magenta(`📄 ${packageReleaseNotePath}:`));
         console.log(packageReleaseNote);
         console.log(); // Add spacing between notes
@@ -816,6 +793,7 @@ export async function createPullRequest({
       console.log(cyan("No workspace-level release note would be created."));
     } else {
       // Multi-package workspace strategy: show workspace note
+      // Single-package: show the single release note
       if (workspaceReleaseNote) {
         console.log(cyan("The release note:"));
         console.log(workspaceReleaseNote);
@@ -853,12 +831,25 @@ export async function createPullRequest({
     // Write workspace release note only if we have one
     if (workspaceReleaseNote) {
       await ensureFile(workspaceReleaseNotePath);
+      const existingContent = await Deno.readTextFile(workspaceReleaseNotePath)
+        .catch(() => "");
       await Deno.writeTextFile(
         workspaceReleaseNotePath,
-        workspaceReleaseNote + "\n" +
-          await Deno.readTextFile(workspaceReleaseNotePath),
+        workspaceReleaseNote + "\n" + existingContent,
       );
       await $`deno fmt ${workspaceReleaseNotePath}`;
+    }
+
+    for (
+      const [packageReleaseNotePath, packageReleaseNote] of packageReleaseNotes
+    ) {
+      await ensureFile(packageReleaseNotePath);
+      const existingContent = await Deno.readTextFile(packageReleaseNotePath)
+        .catch(() => "");
+      await Deno.writeTextFile(
+        packageReleaseNotePath,
+        packageReleaseNote + "\n" + existingContent,
+      );
     }
 
     if (dryRun === false) {
