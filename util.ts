@@ -350,7 +350,6 @@ export async function getWorkspaceModules(
     }
   }
 
-  // Existing workspace logic
   if (!Array.isArray(workspaces)) {
     const errorMessage = red("Error") +
       " deno.json workspace field should be an array of strings.";

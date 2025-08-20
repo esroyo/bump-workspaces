@@ -162,7 +162,7 @@ export async function bumpWorkspaces(
     }
 
     // For historical comparison, use a safe approach
-    let oldModules: WorkspaceModule[];
+    let oldModules: WorkspaceModule[] = [];
 
     if (isSinglePackage) {
       // For single-package repos, try to get historical version safely
@@ -180,43 +180,22 @@ export async function bumpWorkspaces(
             ...historicalConfig,
             [pathProp]: historicalConfigPath,
           }];
-        } else {
-          // Historical config is incomplete - use current structure with historical version
-          // Try to extract version from git tags or use 0.0.0
-          let historicalVersion = "0.0.0";
-          try {
-            const tagOutput = await $`git describe --tags --abbrev=0`.text()
-              .catch(() => "");
-            if (tagOutput.trim()) {
-              const versionMatch = tagOutput.match(/v?(\d+\.\d+\.\d+)/);
-              if (versionMatch) {
-                historicalVersion = versionMatch[1];
-              }
-            }
-          } catch {
-            // Use default 0.0.0
-          }
-
-          oldModules = [{
-            name: modules[0].name, // Use current name
-            version: historicalVersion,
-            [pathProp]: configPath,
-          }];
         }
-
-        await $`git checkout -`;
       } catch {
         if (!quiet) {
           console.warn(
             `Could not read historical config at ${start}, using fallback`,
           );
         }
-        // Fallback: create old module with 0.0.0 version
-        oldModules = [{
-          name: modules[0].name,
-          version: "0.0.0",
-          [pathProp]: configPath,
-        }];
+      } finally {
+        if (oldModules?.length === 0) {
+          // Fallback: create old module with 0.0.0 version
+          oldModules = [{
+            name: modules[0].name,
+            version: "0.0.0",
+            [pathProp]: configPath,
+          }];
+        }
         await $`git checkout -`;
       }
     } else {
