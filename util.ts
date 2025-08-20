@@ -956,6 +956,7 @@ export async function createPullRequest({
         packageReleaseNotePath,
         packageReleaseNote + "\n" + existingContent,
       );
+      await $`deno fmt ${packageReleaseNotePath}`;
     }
 
     if (dryRun === false) {
