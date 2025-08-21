@@ -1,3 +1,8 @@
+### [0.3.5](https://github.com/esroyo/bump-workspaces/compare/v0.3.4...v0.3.5) (2025.08.21)
+
+- refactor: simplify get deno config on single-pkg
+  ([06107da](https://github.com/esroyo/bump-workspaces/commit/06107da4b0a2c14f338fcd87dba66bd6dfd1143c))
+
 ### [0.3.4](https://github.com/esroyo/bump-workspaces/compare/v0.3.3...v0.3.4) (2025.08.20)
 
 - refactor: simplify single-pkg fallback
