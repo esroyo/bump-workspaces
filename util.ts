@@ -372,7 +372,10 @@ export async function getWorkspaceModules(
   }
 
   const result = [];
-  const absoluteCommonPath = resolve(root).replace(root, "");
+  const absoluteRoot = resolve(root);
+  const absoluteCommonPath = `${absoluteRoot.replace(root, "")}${
+    root && root !== "." ? "" : "/"
+  }`;
   for (const workspace of workspaces) {
     if (typeof workspace !== "string") {
       const errorMessage =
