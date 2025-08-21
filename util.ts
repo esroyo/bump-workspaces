@@ -3,6 +3,7 @@ import { $ } from "@david/dax";
 import { Octokit } from "npm:octokit@^3.1";
 import { cyan, magenta } from "@std/fmt/colors";
 import { ensureFile } from "@std/fs/ensure-file";
+import { expandGlob } from "@std/fs/expand-glob";
 import { parse as parseJsonc } from "@std/jsonc/parse";
 import { join } from "@std/path/join";
 import { resolve } from "@std/path/resolve";
@@ -371,6 +372,7 @@ export async function getWorkspaceModules(
   }
 
   const result = [];
+  const absoluteCommonPath = resolve(root).replace(root, "");
   for (const workspace of workspaces) {
     if (typeof workspace !== "string") {
       const errorMessage =
@@ -383,13 +385,18 @@ export async function getWorkspaceModules(
       console.log(errorMessage);
       Deno.exit(1);
     }
-    const [path, workspaceConfig] = await tryGetDenoConfig(
-      join(root, workspace),
+    const expandedWorkspaces = await Array.fromAsync(
+      expandGlob(workspace, { root }),
     );
-    if (!workspaceConfig.name) {
-      continue;
+    for (const { path: expandedWorkspace } of expandedWorkspaces) {
+      const [path, workspaceConfig] = await tryGetDenoConfig(
+        expandedWorkspace.replace(absoluteCommonPath, ""),
+      );
+      if (!workspaceConfig.name) {
+        continue;
+      }
+      result.push({ ...workspaceConfig, [pathProp]: path });
     }
-    result.push({ ...workspaceConfig, [pathProp]: path });
   }
   return [path, result];
 }
