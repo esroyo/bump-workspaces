@@ -123,6 +123,8 @@ interface GitContextOptions {
 
 // Options interface for controlling behavior
 interface GetWorkspaceModulesOptions {
+  defaultName?: string;
+  defaultVersion?: string;
   throwOnError?: boolean;
   quiet?: boolean;
 }
@@ -330,6 +332,12 @@ export async function getWorkspaceModules(
 
   // Handle single-package repos (non-workspace)
   if (!workspaces) {
+    if (!denoConfig.name && options.defaultName) {
+      denoConfig.name = options.defaultName;
+    }
+    if (!denoConfig.version && options.defaultVersion) {
+      denoConfig.version = options.defaultVersion;
+    }
     if (denoConfig.name && denoConfig.version) {
       // Treat root as a single package
       return [path, [{ ...denoConfig, [pathProp]: path }]];

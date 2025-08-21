@@ -33,7 +33,6 @@ import {
   pathProp,
   resolveTag,
   summarizeVersionBumpsByModule,
-  tryGetDenoConfig,
   type VersionBump,
   type VersionUpdateResult,
   withGitContext,
@@ -161,53 +160,15 @@ export async function bumpWorkspaces(
       }
     }
 
-    // For historical comparison, use a safe approach
-    let oldModules: WorkspaceModule[] = [];
-
-    if (isSinglePackage) {
-      // For single-package repos, try to get historical version safely
-      try {
-        await $`git checkout ${start}`;
-
-        // Try to read the historical deno.json
-        const [historicalConfigPath, historicalConfig] = await tryGetDenoConfig(
-          root,
-        );
-
-        if (historicalConfig.name && historicalConfig.version) {
-          // Historical config is valid single-package
-          oldModules = [{
-            ...historicalConfig,
-            [pathProp]: historicalConfigPath,
-          }];
-        }
-      } catch {
-        if (!quiet) {
-          console.warn(
-            `Could not read historical config at ${start}, using fallback`,
-          );
-        }
-      } finally {
-        if (oldModules?.length === 0) {
-          // Fallback: create old module with 0.0.0 version
-          oldModules = [{
-            name: modules[0].name,
-            version: "0.0.0",
-            [pathProp]: configPath,
-          }];
-        }
-        await $`git checkout -`;
-      }
-    } else {
-      // For workspace repos, use the original logic
-      await $`git checkout ${start}`;
-      const [_oldConfigPath, oldModulesResult] = await getWorkspaceModules(
-        root,
-        { quiet },
-      );
-      oldModules = oldModulesResult;
-      await $`git checkout -`;
-    }
+    await $`git checkout ${start}`;
+    const oldModOptions = isSinglePackage
+      ? { defaultName: modules[0].name, defaultVersion: "0.0.0", quiet }
+      : { quiet };
+    const [_oldConfigPath, oldModules] = await getWorkspaceModules(
+      root,
+      oldModOptions,
+    );
+    await $`git checkout -`;
 
     await $`git checkout ${base}`;
     await $`git checkout -`;
