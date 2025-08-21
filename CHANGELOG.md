@@ -1,3 +1,8 @@
+### [0.3.6](https://github.com/esroyo/bump-workspaces/compare/v0.3.5...v0.3.6) (2025.08.21)
+
+- fix: accept glob patterns in workspace values
+  ([cf1084b](https://github.com/esroyo/bump-workspaces/commit/cf1084b88d6f57c26e88ea4ace92d6061f60ff7f))
+
 ### [0.3.5](https://github.com/esroyo/bump-workspaces/compare/v0.3.4...v0.3.5) (2025.08.21)
 
 - refactor: simplify get deno config on single-pkg
