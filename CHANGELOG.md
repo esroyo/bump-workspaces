@@ -1,3 +1,8 @@
+### [0.3.7](https://github.com/esroyo/bump-workspaces/compare/v0.3.6...v0.3.7) (2025.08.21)
+
+- fix: avoid error with empty root
+  ([646112f](https://github.com/esroyo/bump-workspaces/commit/646112fa57642fb3c6affc4ffd3d6933c97384f0))
+
 ### [0.3.6](https://github.com/esroyo/bump-workspaces/compare/v0.3.5...v0.3.6) (2025.08.21)
 
 - fix: accept glob patterns in workspace values
